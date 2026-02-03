@@ -44,6 +44,7 @@ Checklist:
 - [x] Visual mode (char-wise)
 - [x] Visual mode (line/block)
 - [x] Registers (unnamed + simple named)
+- [x] Text objects (iw/aw, i{}/a{}, i()/a(), i[]/a[], i</a>, i"/i', it/at)
 - [ ] Macro record/playback (single register)
 
 ### Phase 3 — Reliability & Performance
@@ -78,6 +79,7 @@ Checklist:
 - Cursor style differs by mode (Insert = bar).
 - Smart indent supports `{[(` and optional `:` rules; `:set shiftwidth=` and `:set indentcolon`.
 - Codebase split into modules under `src/app/` plus `src/ui.rs`.
+- Delete/change yanks into register (dw/ciw/diw/visual d/c/x).
 
 ## Architecture Sketch
 

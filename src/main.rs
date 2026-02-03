@@ -876,8 +876,12 @@ impl App {
                 let col = if block.append {
                     line.chars().count()
                 } else {
-                    block.col.min(line.chars().count())
+                    block.col
                 };
+                let len = line.chars().count();
+                if col > len {
+                    line.push_str(&" ".repeat(col - len));
+                }
                 let byte_idx = char_to_byte_idx(line, col);
                 line.insert(byte_idx, ch);
             }
@@ -1681,24 +1685,14 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Char('A'), _) => {
                 if matches!(app.mode, Mode::VisualBlock) {
                     if let Some(VisualSelection::Block { start, end }) = app.visual_selection() {
-                        let mut max_col = 0;
-                        for row in start.0..=end.0 {
-                            if row >= app.lines.len() {
-                                break;
-                            }
-                            let len = app.line_len(row);
-                            if len > max_col {
-                                max_col = len;
-                            }
-                        }
                         app.block_insert = Some(BlockInsert {
                             start_row: start.0,
                             end_row: end.0,
-                            col: max_col,
-                            append: true,
+                            col: end.1 + 1,
+                            append: false,
                         });
                         app.cursor_row = start.0;
-                        app.cursor_col = max_col;
+                        app.cursor_col = end.1 + 1;
                         app.mode = Mode::Insert;
                         app.visual_start = None;
                         app.set_status("-- INSERT --");

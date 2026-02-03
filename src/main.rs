@@ -418,6 +418,44 @@ impl App {
         self.yank_buffer = self.lines.get(row).cloned().unwrap_or_default();
     }
 
+    fn paste_after(&mut self) {
+        if self.yank_buffer.is_empty() {
+            return;
+        }
+        if self.yank_buffer.contains('\n') {
+            let insert_at = (self.cursor_row + 1).min(self.lines.len());
+            let lines: Vec<String> = self.yank_buffer.split('\n').map(|s| s.to_string()).collect();
+            self.lines.splice(insert_at..insert_at, lines);
+            self.cursor_row = insert_at;
+            self.cursor_col = 0;
+        } else {
+            let line = &mut self.lines[self.cursor_row];
+            let byte_idx = char_to_byte_idx(line, self.cursor_col + 1);
+            line.insert_str(byte_idx, &self.yank_buffer);
+            self.cursor_col += self.yank_buffer.chars().count();
+        }
+        self.dirty = true;
+    }
+
+    fn paste_before(&mut self) {
+        if self.yank_buffer.is_empty() {
+            return;
+        }
+        if self.yank_buffer.contains('\n') {
+            let insert_at = self.cursor_row.min(self.lines.len());
+            let lines: Vec<String> = self.yank_buffer.split('\n').map(|s| s.to_string()).collect();
+            self.lines.splice(insert_at..insert_at, lines);
+            self.cursor_row = insert_at;
+            self.cursor_col = 0;
+        } else {
+            let line = &mut self.lines[self.cursor_row];
+            let byte_idx = char_to_byte_idx(line, self.cursor_col);
+            line.insert_str(byte_idx, &self.yank_buffer);
+            self.cursor_col += self.yank_buffer.chars().count();
+        }
+        self.dirty = true;
+    }
+
     fn apply_operator(&mut self, op: Operator, start: (usize, usize), end: (usize, usize)) {
         match op {
             Operator::Delete => self.delete_range(start, end),
@@ -1032,6 +1070,12 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                     start_row: app.cursor_row,
                     start_col: app.cursor_col,
                 });
+            }
+            (KeyCode::Char('p'), KeyModifiers::NONE) => {
+                app.paste_after();
+            }
+            (KeyCode::Char('P'), _) => {
+                app.paste_before();
             }
             (KeyCode::Char('h'), KeyModifiers::NONE) | (KeyCode::Left, _) => app.move_left(),
             (KeyCode::Char('j'), KeyModifiers::NONE) | (KeyCode::Down, _) => app.move_down(),

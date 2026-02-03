@@ -207,42 +207,68 @@ impl App {
         }
     }
 
-    fn find_in_line(&mut self, target: char, until: bool) -> bool {
-        let Some(line) = self.lines.get(self.cursor_row) else {
-            return false;
-        };
-        for (idx, ch) in line.chars().enumerate() {
-            if idx <= self.cursor_col {
-                continue;
+    fn find_forward(&mut self, target: char, until: bool) -> bool {
+        let mut row = self.cursor_row;
+        let mut col = self.cursor_col + 1;
+
+        while row < self.lines.len() {
+            let line = &self.lines[row];
+            for (idx, ch) in line.chars().enumerate() {
+                if row == self.cursor_row && idx < col {
+                    continue;
+                }
+                if ch == target {
+                    let mut target_pos = (row, idx);
+                    if until {
+                        if let Some(prev) = self.prev_pos(row, idx) {
+                            target_pos = prev;
+                        }
+                    }
+                    self.cursor_row = target_pos.0;
+                    self.cursor_col = target_pos.1;
+                    return true;
+                }
             }
-            if ch == target {
-                self.cursor_col = if until && idx > 0 { idx - 1 } else { idx };
-                return true;
-            }
+            row += 1;
+            col = 0;
         }
         false
     }
 
-    fn find_in_line_backward(&mut self, target: char, until: bool) -> bool {
-        let Some(line) = self.lines.get(self.cursor_row) else {
+    fn find_backward(&mut self, target: char, until: bool) -> bool {
+        if self.lines.is_empty() {
             return false;
-        };
-        let mut last_match: Option<usize> = None;
-        for (idx, ch) in line.chars().enumerate() {
-            if idx >= self.cursor_col {
+        }
+        let mut row = self.cursor_row;
+        let mut col = self.cursor_col;
+
+        loop {
+            let line = &self.lines[row];
+            let mut last_match: Option<usize> = None;
+            for (idx, ch) in line.chars().enumerate() {
+                if row == self.cursor_row && idx >= col {
+                    break;
+                }
+                if ch == target {
+                    last_match = Some(idx);
+                }
+            }
+            if let Some(idx) = last_match {
+                let mut target_pos = (row, idx);
+                if until {
+                    if let Some(next) = self.advance_pos(row, idx) {
+                        target_pos = next;
+                    }
+                }
+                self.cursor_row = target_pos.0;
+                self.cursor_col = target_pos.1;
+                return true;
+            }
+            if row == 0 {
                 break;
             }
-            if ch == target {
-                last_match = Some(idx);
-            }
-        }
-        if let Some(idx) = last_match {
-            self.cursor_col = if until && idx + 1 <= self.cursor_col {
-                idx + 1
-            } else {
-                idx
-            };
-            return true;
+            row -= 1;
+            col = self.line_len(row);
         }
         false
     }
@@ -633,9 +659,9 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
         if let Some(pending) = app.pending_find.take() {
             if let KeyCode::Char(ch) = key.code {
                 let found = if pending.reverse {
-                    app.find_in_line_backward(ch, pending.until)
+                    app.find_backward(ch, pending.until)
                 } else {
-                    app.find_in_line(ch, pending.until)
+                    app.find_forward(ch, pending.until)
                 };
                 if !found {
                     app.set_status("Pattern not found");
@@ -717,9 +743,9 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Char(';'), KeyModifiers::NONE) => {
                 if let Some(spec) = app.last_find {
                     let found = if spec.reverse {
-                        app.find_in_line_backward(spec.ch, spec.until)
+                        app.find_backward(spec.ch, spec.until)
                     } else {
-                        app.find_in_line(spec.ch, spec.until)
+                        app.find_forward(spec.ch, spec.until)
                     };
                     if !found {
                         app.set_status("Pattern not found");
@@ -729,9 +755,9 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Char(','), KeyModifiers::NONE) => {
                 if let Some(spec) = app.last_find {
                     let found = if spec.reverse {
-                        app.find_in_line(spec.ch, spec.until)
+                        app.find_forward(spec.ch, spec.until)
                     } else {
-                        app.find_in_line_backward(spec.ch, spec.until)
+                        app.find_backward(spec.ch, spec.until)
                     };
                     if !found {
                         app.set_status("Pattern not found");

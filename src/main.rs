@@ -207,6 +207,27 @@ impl App {
         }
     }
 
+    fn move_big_word_forward(&mut self) {
+        if let Some((row, col)) = self.next_big_word_start(self.cursor_row, self.cursor_col) {
+            self.cursor_row = row;
+            self.cursor_col = col;
+        }
+    }
+
+    fn move_big_word_end(&mut self) {
+        if let Some((row, col)) = self.next_big_word_end(self.cursor_row, self.cursor_col) {
+            self.cursor_row = row;
+            self.cursor_col = col;
+        }
+    }
+
+    fn move_big_word_back(&mut self) {
+        if let Some((row, col)) = self.prev_big_word_start(self.cursor_row, self.cursor_col) {
+            self.cursor_row = row;
+            self.cursor_col = col;
+        }
+    }
+
     fn find_forward(&mut self, target: char, until: bool) -> bool {
         let mut row = self.cursor_row;
         let mut col = self.cursor_col + 1;
@@ -320,6 +341,46 @@ impl App {
         Some(self.start_of_group(row, col, cur))
     }
 
+    fn next_big_word_start(&self, row: usize, col: usize) -> Option<(usize, usize)> {
+        let cur = self.class_at(row, col)?;
+        if cur == CharClass::Space {
+            return self.skip_spaces_forward(row, col);
+        }
+        let after = self.advance_to_next_non_space_change(row, col)?;
+        self.skip_spaces_forward(after.0, after.1)
+    }
+
+    fn next_big_word_end(&self, row: usize, col: usize) -> Option<(usize, usize)> {
+        let cur = self.class_at(row, col)?;
+        if cur == CharClass::Space {
+            let (sr, sc) = self.skip_spaces_forward(row, col)?;
+            return Some(self.end_of_non_space_group(sr, sc));
+        }
+        let end = self.end_of_non_space_group(row, col);
+        if end != (row, col) {
+            return Some(end);
+        }
+        let next = self.advance_pos(row, col)?;
+        let (sr, sc) = self.skip_spaces_forward(next.0, next.1)?;
+        Some(self.end_of_non_space_group(sr, sc))
+    }
+
+    fn prev_big_word_start(&self, row: usize, col: usize) -> Option<(usize, usize)> {
+        let cur = self.class_at(row, col)?;
+        if cur == CharClass::Space {
+            let (r, c) = self.skip_spaces_backward(row, col)?;
+            return Some(self.start_of_non_space_group(r, c));
+        }
+
+        if self.is_non_space_group_start(row, col) {
+            let prev = self.prev_pos(row, col)?;
+            let (r, c) = self.skip_spaces_backward(prev.0, prev.1)?;
+            return Some(self.start_of_non_space_group(r, c));
+        }
+
+        Some(self.start_of_non_space_group(row, col))
+    }
+
     fn skip_spaces_forward(&self, row: usize, col: usize) -> Option<(usize, usize)> {
         let mut r = row;
         let mut c = col;
@@ -404,6 +465,57 @@ impl App {
     fn is_group_start(&self, row: usize, col: usize, class: CharClass) -> bool {
         match self.prev_pos(row, col) {
             Some((pr, pc)) => self.class_at(pr, pc) != Some(class),
+            None => true,
+        }
+    }
+
+    fn advance_to_next_non_space_change(&self, row: usize, col: usize) -> Option<(usize, usize)> {
+        let mut r = row;
+        let mut c = col;
+        loop {
+            let next = self.advance_pos(r, c)?;
+            match self.class_at(next.0, next.1) {
+                Some(CharClass::Space) => return Some(next),
+                Some(_) => {
+                    r = next.0;
+                    c = next.1;
+                }
+                None => return None,
+            }
+        }
+    }
+
+    fn start_of_non_space_group(&self, row: usize, col: usize) -> (usize, usize) {
+        let mut r = row;
+        let mut c = col;
+        while let Some((pr, pc)) = self.prev_pos(r, c) {
+            if self.class_at(pr, pc) != Some(CharClass::Space) {
+                r = pr;
+                c = pc;
+            } else {
+                break;
+            }
+        }
+        (r, c)
+    }
+
+    fn end_of_non_space_group(&self, row: usize, col: usize) -> (usize, usize) {
+        let mut r = row;
+        let mut c = col;
+        while let Some((nr, nc)) = self.advance_pos(r, c) {
+            if self.class_at(nr, nc) != Some(CharClass::Space) {
+                r = nr;
+                c = nc;
+            } else {
+                break;
+            }
+        }
+        (r, c)
+    }
+
+    fn is_non_space_group_start(&self, row: usize, col: usize) -> bool {
+        match self.prev_pos(row, col) {
+            Some((pr, pc)) => self.class_at(pr, pc) == Some(CharClass::Space),
             None => true,
         }
     }
@@ -664,7 +776,11 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                     app.find_forward(ch, pending.until)
                 };
                 if !found {
-                    app.set_status("Pattern not found");
+                    app.set_status(format!(
+                        "Pattern not found: {}{}",
+                        if pending.reverse { "F" } else { "f" },
+                        ch
+                    ));
                 } else {
                     app.last_find = Some(FindSpec {
                         ch,
@@ -705,6 +821,9 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Char('w'), KeyModifiers::NONE) => app.move_word_forward(),
             (KeyCode::Char('b'), KeyModifiers::NONE) => app.move_word_back(),
             (KeyCode::Char('e'), KeyModifiers::NONE) => app.move_word_end(),
+            (KeyCode::Char('W'), _) => app.move_big_word_forward(),
+            (KeyCode::Char('B'), _) => app.move_big_word_back(),
+            (KeyCode::Char('E'), _) => app.move_big_word_end(),
             (KeyCode::Char('0'), KeyModifiers::NONE) => app.move_line_start(),
             (KeyCode::Char('$'), _) => app.move_line_end(),
             (KeyCode::Char('g'), KeyModifiers::NONE) => {
@@ -748,8 +867,14 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                         app.find_forward(spec.ch, spec.until)
                     };
                     if !found {
-                        app.set_status("Pattern not found");
+                        app.set_status(format!(
+                            "Pattern not found: {}{}",
+                            if spec.reverse { "F" } else { "f" },
+                            spec.ch
+                        ));
                     }
+                } else {
+                    app.set_status("No previous find");
                 }
             }
             (KeyCode::Char(','), KeyModifiers::NONE) => {
@@ -760,8 +885,14 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                         app.find_backward(spec.ch, spec.until)
                     };
                     if !found {
-                        app.set_status("Pattern not found");
+                        app.set_status(format!(
+                            "Pattern not found: {}{}",
+                            if spec.reverse { "f" } else { "F" },
+                            spec.ch
+                        ));
                     }
+                } else {
+                    app.set_status("No previous find");
                 }
             }
             (KeyCode::Char('x'), KeyModifiers::NONE) => app.delete_at_cursor(),

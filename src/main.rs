@@ -31,6 +31,7 @@ struct App {
     status_message: String,
     status_time: Option<Instant>,
     command_buffer: String,
+    pending_g: bool,
 }
 
 impl App {
@@ -52,6 +53,7 @@ impl App {
             status_message: String::new(),
             status_time: None,
             command_buffer: String::new(),
+            pending_g: false,
         }
     }
 
@@ -74,6 +76,40 @@ impl App {
             .get(row)
             .map(|l| l.chars().count())
             .unwrap_or(0)
+    }
+
+    fn char_at(&self, row: usize, col: usize) -> Option<char> {
+        self.lines.get(row).and_then(|l| l.chars().nth(col))
+    }
+
+    fn advance_pos(&self, row: usize, col: usize) -> Option<(usize, usize)> {
+        let len = self.line_len(row);
+        if col < len {
+            Some((row, col + 1))
+        } else if row + 1 < self.lines.len() {
+            Some((row + 1, 0))
+        } else {
+            None
+        }
+    }
+
+    fn prev_pos(&self, row: usize, col: usize) -> Option<(usize, usize)> {
+        if row == 0 && col == 0 {
+            return None;
+        }
+        if col > 0 {
+            return Some((row, col - 1));
+        }
+        if row == 0 {
+            return None;
+        }
+        let prev_row = row - 1;
+        let prev_len = self.line_len(prev_row);
+        if prev_len == 0 {
+            Some((prev_row, 0))
+        } else {
+            Some((prev_row, prev_len - 1))
+        }
     }
 
     fn move_left(&mut self) {
@@ -109,6 +145,184 @@ impl App {
             let len = self.line_len(self.cursor_row);
             self.cursor_col = self.cursor_col.min(len);
         }
+    }
+
+    fn move_line_start(&mut self) {
+        self.cursor_col = 0;
+    }
+
+    fn move_line_end(&mut self) {
+        let len = self.line_len(self.cursor_row);
+        self.cursor_col = if len == 0 { 0 } else { len - 1 };
+    }
+
+    fn move_to_top(&mut self) {
+        self.cursor_row = 0;
+        self.cursor_col = 0;
+    }
+
+    fn move_to_bottom(&mut self) {
+        if self.lines.is_empty() {
+            self.cursor_row = 0;
+            self.cursor_col = 0;
+            return;
+        }
+        self.cursor_row = self.lines.len() - 1;
+        self.cursor_col = 0;
+    }
+
+    fn move_word_forward(&mut self) {
+        if let Some((row, col)) = self.next_word_start(self.cursor_row, self.cursor_col) {
+            self.cursor_row = row;
+            self.cursor_col = col;
+        }
+    }
+
+    fn move_word_end(&mut self) {
+        if let Some((row, col)) = self.next_word_end(self.cursor_row, self.cursor_col) {
+            self.cursor_row = row;
+            self.cursor_col = col;
+        }
+    }
+
+    fn move_word_back(&mut self) {
+        if let Some((row, col)) = self.prev_word_start(self.cursor_row, self.cursor_col) {
+            self.cursor_row = row;
+            self.cursor_col = col;
+        }
+    }
+
+    fn next_word_start(&self, row: usize, col: usize) -> Option<(usize, usize)> {
+        let mut r = row;
+        let mut c = col;
+
+        if self.char_at(r, c).map(is_word_char).unwrap_or(false) {
+            while let Some(ch) = self.char_at(r, c) {
+                if !is_word_char(ch) {
+                    break;
+                }
+                if let Some((nr, nc)) = self.advance_pos(r, c) {
+                    r = nr;
+                    c = nc;
+                } else {
+                    return None;
+                }
+            }
+        }
+
+        loop {
+            match self.char_at(r, c) {
+                Some(ch) if is_word_char(ch) => return Some((r, c)),
+                Some(_) => {
+                    if let Some((nr, nc)) = self.advance_pos(r, c) {
+                        r = nr;
+                        c = nc;
+                    } else {
+                        return None;
+                    }
+                }
+                None => {
+                    if let Some((nr, nc)) = self.advance_pos(r, c) {
+                        r = nr;
+                        c = nc;
+                    } else {
+                        return None;
+                    }
+                }
+            }
+        }
+    }
+
+    fn next_word_end(&self, row: usize, col: usize) -> Option<(usize, usize)> {
+        let mut r = row;
+        let mut c = col;
+
+        if self.char_at(r, c).map(is_word_char).unwrap_or(false) {
+            let mut moved = false;
+            while let Some((nr, nc)) = self.advance_pos(r, c) {
+                if let Some(ch) = self.char_at(nr, nc) {
+                    if is_word_char(ch) {
+                        r = nr;
+                        c = nc;
+                        moved = true;
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+            if moved {
+                return Some((r, c));
+            }
+            let (sr, sc) = self.next_word_start(r, c)?;
+            r = sr;
+            c = sc;
+            while let Some((nr, nc)) = self.advance_pos(r, c) {
+                if let Some(ch) = self.char_at(nr, nc) {
+                    if is_word_char(ch) {
+                        r = nr;
+                        c = nc;
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+            return Some((r, c));
+        }
+
+        let (sr, sc) = self.next_word_start(r, c)?;
+        let mut r = sr;
+        let mut c = sc;
+        while let Some((nr, nc)) = self.advance_pos(r, c) {
+            if let Some(ch) = self.char_at(nr, nc) {
+                if is_word_char(ch) {
+                    r = nr;
+                    c = nc;
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        Some((r, c))
+    }
+
+    fn prev_word_start(&self, row: usize, col: usize) -> Option<(usize, usize)> {
+        let mut pos = if self.char_at(row, col).map(is_word_char).unwrap_or(false) {
+            if let Some((pr, pc)) = self.prev_pos(row, col) {
+                if self.char_at(pr, pc).map(is_word_char).unwrap_or(false) {
+                    Some((pr, pc))
+                } else {
+                    self.prev_pos(row, col)
+                }
+            } else {
+                None
+            }
+        } else {
+            self.prev_pos(row, col)
+        };
+
+        while let Some((r, c)) = pos {
+            if self.char_at(r, c).map(is_word_char).unwrap_or(false) {
+                let mut sr = r;
+                let mut sc = c;
+                while let Some((pr, pc)) = self.prev_pos(sr, sc) {
+                    if self.char_at(pr, pc).map(is_word_char).unwrap_or(false) {
+                        sr = pr;
+                        sc = pc;
+                    } else {
+                        break;
+                    }
+                }
+                return Some((sr, sc));
+            }
+            pos = self.prev_pos(r, c);
+        }
+        None
     }
 
     fn insert_char(&mut self, ch: char) {
@@ -273,6 +487,10 @@ fn char_to_byte_idx(s: &str, char_idx: usize) -> usize {
         .unwrap_or_else(|| s.len())
 }
 
+fn is_word_char(ch: char) -> bool {
+    ch.is_alphanumeric() || ch == '_'
+}
+
 struct TerminalGuard;
 
 impl TerminalGuard {
@@ -324,6 +542,10 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
     if !is_quit {
         app.quit_confirm = false;
     }
+    if app.pending_g && !(matches!(key.code, KeyCode::Char('g')) && key.modifiers == KeyModifiers::NONE)
+    {
+        app.pending_g = false;
+    }
 
     match app.mode {
         Mode::Normal => match (key.code, key.modifiers) {
@@ -350,6 +572,20 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Char('j'), KeyModifiers::NONE) | (KeyCode::Down, _) => app.move_down(),
             (KeyCode::Char('k'), KeyModifiers::NONE) | (KeyCode::Up, _) => app.move_up(),
             (KeyCode::Char('l'), KeyModifiers::NONE) | (KeyCode::Right, _) => app.move_right(),
+            (KeyCode::Char('w'), KeyModifiers::NONE) => app.move_word_forward(),
+            (KeyCode::Char('b'), KeyModifiers::NONE) => app.move_word_back(),
+            (KeyCode::Char('e'), KeyModifiers::NONE) => app.move_word_end(),
+            (KeyCode::Char('0'), KeyModifiers::NONE) => app.move_line_start(),
+            (KeyCode::Char('$'), _) => app.move_line_end(),
+            (KeyCode::Char('g'), KeyModifiers::NONE) => {
+                if app.pending_g {
+                    app.move_to_top();
+                    app.pending_g = false;
+                } else {
+                    app.pending_g = true;
+                }
+            }
+            (KeyCode::Char('G'), _) => app.move_to_bottom(),
             (KeyCode::Char('x'), KeyModifiers::NONE) => app.delete_at_cursor(),
             (KeyCode::Char('o'), KeyModifiers::NONE) => {
                 app.open_line_below();

@@ -7,7 +7,7 @@ use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-use crate::app::{App, Mode, VisualSelection};
+use crate::app::{App, Mode, VisualSelection, VisualSelectionKind};
 
 pub fn apply_cursor_style(app: &App) -> Result<()> {
     match app.mode {
@@ -78,11 +78,7 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
         app.cursor_row + 1,
         app.cursor_col + 1
     );
-    status.push_str(&format!(
-        " | undo:{} redo:{}",
-        app.undo_stack.len(),
-        app.redo_stack.len()
-    ));
+    status.push_str(&format!(" | undo:{} redo:{}", app.undo_len(), app.redo_len()));
     if matches!(app.mode, Mode::VisualChar | Mode::VisualLine | Mode::VisualBlock) {
         if let Some(summary) = app.selection_summary() {
             status.push_str(" | ");
@@ -149,8 +145,8 @@ fn render_line_with_selection(
     };
 
     let mut is_selected = |c: usize| -> bool {
-        match selection {
-            VisualSelection::Char((sel_start, sel_end)) => {
+        match selection.kind {
+            VisualSelectionKind::Char(sel_start, sel_end) => {
                 let within_line = line_idx >= sel_start.0 && line_idx <= sel_end.0;
                 if !within_line {
                     return false;
@@ -165,8 +161,10 @@ fn render_line_with_selection(
                     true
                 }
             }
-            VisualSelection::Line(start_row, end_row) => line_idx >= start_row && line_idx <= end_row,
-            VisualSelection::Block { start, end } => {
+            VisualSelectionKind::Line(start_row, end_row) => {
+                line_idx >= start_row && line_idx <= end_row
+            }
+            VisualSelectionKind::Block { start, end } => {
                 let within_line = line_idx >= start.0 && line_idx <= end.0;
                 within_line && c >= start.1 && c <= end.1
             }

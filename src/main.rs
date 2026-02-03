@@ -74,6 +74,8 @@ struct App {
     insert_undo_snapshot: bool,
     undo_limit: usize,
     line_undo: Option<LineUndo>,
+    shift_width: usize,
+    indent_colon: bool,
 }
 
 impl App {
@@ -111,6 +113,8 @@ impl App {
             insert_undo_snapshot: false,
             undo_limit: 200,
             line_undo: None,
+            shift_width: 4,
+            indent_colon: false,
         }
     }
 
@@ -359,9 +363,12 @@ impl App {
         line.chars().take_while(|c| c.is_whitespace()).collect()
     }
 
-    fn should_increase_indent(line: &str) -> bool {
+    fn should_increase_indent(line: &str, indent_colon: bool) -> bool {
         let trimmed = line.trim_end();
-        trimmed.ends_with('{') || trimmed.ends_with('[') || trimmed.ends_with('(')
+        trimmed.ends_with('{')
+            || trimmed.ends_with('[')
+            || trimmed.ends_with('(')
+            || (indent_colon && trimmed.ends_with(':'))
     }
 
     fn should_decrease_indent(line: &str) -> bool {
@@ -369,23 +376,58 @@ impl App {
         trimmed.starts_with('}') || trimmed.starts_with(']') || trimmed.starts_with(')')
     }
 
-    fn increase_indent(indent: &str) -> String {
+    fn increase_indent(indent: &str, shift_width: usize) -> String {
         let mut out = indent.to_string();
-        out.push_str("    ");
+        out.push_str(&" ".repeat(shift_width));
         out
     }
 
-    fn decrease_indent(indent: &str) -> String {
+    fn decrease_indent(indent: &str, shift_width: usize) -> String {
         if indent.ends_with('\t') {
             return indent[..indent.len().saturating_sub(1)].to_string();
         }
         let mut trimmed = indent.to_string();
         let mut remove = 0;
-        while remove < 4 && trimmed.ends_with(' ') {
+        while remove < shift_width && trimmed.ends_with(' ') {
             trimmed.pop();
             remove += 1;
         }
         trimmed
+    }
+
+    fn matching_indent_for_closer(&self, row: usize, col: usize) -> Option<usize> {
+        let ch = self.char_at(row, col)?;
+        let (open, close) = match ch {
+            '}' => ('{', '}'),
+            ']' => ('[', ']'),
+            ')' => ('(', ')'),
+            _ => return None,
+        };
+
+        let mut depth = 0i32;
+        let mut r = row;
+        let mut c = col;
+        loop {
+            if let Some((pr, pc)) = self.prev_pos(r, c) {
+                r = pr;
+                c = pc;
+            } else {
+                break;
+            }
+            if let Some(ch2) = self.char_at(r, c) {
+                if ch2 == close {
+                    depth += 1;
+                } else if ch2 == open {
+                    if depth == 0 {
+                        let indent = Self::leading_whitespace(&self.lines[r]).chars().count();
+                        return Some(indent);
+                    } else {
+                        depth -= 1;
+                    }
+                }
+            }
+        }
+        None
     }
 
     fn move_to_top(&mut self) {
@@ -1175,10 +1217,14 @@ impl App {
         let byte_idx = char_to_byte_idx(line, self.cursor_col);
         let right = line.split_off(byte_idx);
         let mut indent = Self::leading_whitespace(line);
-        if Self::should_increase_indent(line) {
-            indent = Self::increase_indent(&indent);
+        if Self::should_increase_indent(line, self.indent_colon) {
+            indent = Self::increase_indent(&indent, self.shift_width);
         } else if Self::should_decrease_indent(&right) {
-            indent = Self::decrease_indent(&indent);
+            if let Some(target) = self.matching_indent_for_closer(self.cursor_row + 1, 0) {
+                indent = " ".repeat(target);
+            } else {
+                indent = Self::decrease_indent(&indent, self.shift_width);
+            }
         }
         let mut new_line = indent.clone();
         new_line.push_str(&right);
@@ -1288,8 +1334,8 @@ impl App {
         self.clear_line_undo();
         let line = &self.lines[self.cursor_row];
         let mut indent = Self::leading_whitespace(line);
-        if Self::should_increase_indent(line) {
-            indent = Self::increase_indent(&indent);
+        if Self::should_increase_indent(line, self.indent_colon) {
+            indent = Self::increase_indent(&indent, self.shift_width);
         }
         self.lines.insert(self.cursor_row + 1, indent.clone());
         self.cursor_row += 1;
@@ -1303,7 +1349,11 @@ impl App {
         let line = &self.lines[self.cursor_row];
         let mut indent = Self::leading_whitespace(line);
         if Self::should_decrease_indent(line) {
-            indent = Self::decrease_indent(&indent);
+            if let Some(target) = self.matching_indent_for_closer(self.cursor_row, 0) {
+                indent = " ".repeat(target);
+            } else {
+                indent = Self::decrease_indent(&indent, self.shift_width);
+            }
         }
         self.lines.insert(self.cursor_row, indent.clone());
         self.cursor_col = indent.chars().count();
@@ -1375,6 +1425,19 @@ impl App {
             }
             "set" => {
                 if let Some(setting) = arg {
+                    if let Some(value) = setting.strip_prefix("shiftwidth=") {
+                        if let Ok(width) = value.parse::<usize>() {
+                            if width > 0 {
+                                self.shift_width = width;
+                                self.set_status(format!("shiftwidth={}", width));
+                            } else {
+                                self.set_status("shiftwidth must be > 0");
+                            }
+                        } else {
+                            self.set_status("shiftwidth expects a number");
+                        }
+                        return Ok(false);
+                    }
                     match setting {
                         "findcross" => {
                             self.find_cross_line = true;
@@ -1388,10 +1451,25 @@ impl App {
                             let value = if self.find_cross_line { "findcross" } else { "nofindcross" };
                             self.set_status(value);
                         }
+                        "shiftwidth?" => {
+                            self.set_status(format!("shiftwidth={}", self.shift_width));
+                        }
+                        "indentcolon" => {
+                            self.indent_colon = true;
+                            self.set_status("indentcolon");
+                        }
+                        "noindentcolon" => {
+                            self.indent_colon = false;
+                            self.set_status("noindentcolon");
+                        }
+                        "indentcolon?" => {
+                            let value = if self.indent_colon { "indentcolon" } else { "noindentcolon" };
+                            self.set_status(value);
+                        }
                         _ => self.set_status("Unknown option"),
                     }
                 } else {
-                    self.set_status("Usage: :set findcross|nofindcross|findcross?");
+                    self.set_status("Usage: :set findcross|nofindcross|shiftwidth=4|indentcolon");
                 }
             }
             _ => {

@@ -15,6 +15,7 @@ use ratatui::widgets::{Block, Borders, Paragraph};
 enum Mode {
     Normal,
     Insert,
+    Command,
 }
 
 struct App {
@@ -29,6 +30,7 @@ struct App {
     quit_confirm: bool,
     status_message: String,
     status_time: Option<Instant>,
+    command_buffer: String,
 }
 
 impl App {
@@ -49,6 +51,7 @@ impl App {
             quit_confirm: false,
             status_message: String::new(),
             status_time: None,
+            command_buffer: String::new(),
         }
     }
 
@@ -186,6 +189,65 @@ impl App {
         Ok(())
     }
 
+    fn reload(&mut self, path: &PathBuf) -> Result<()> {
+        let content = fs::read_to_string(path).unwrap_or_default();
+        self.lines = content.lines().map(|s| s.to_string()).collect();
+        if self.lines.is_empty() {
+            self.lines.push(String::new());
+        }
+        self.cursor_row = 0;
+        self.cursor_col = 0;
+        self.scroll_row = 0;
+        self.scroll_col = 0;
+        self.dirty = false;
+        Ok(())
+    }
+
+    fn execute_command(&mut self) -> Result<bool> {
+        let input = self.command_buffer.trim();
+        if input.is_empty() {
+            return Ok(false);
+        }
+
+        let mut parts = input.split_whitespace();
+        let cmd = parts.next().unwrap_or("");
+        let arg = parts.next();
+
+        match cmd {
+            "w" | "write" => {
+                self.save()?;
+            }
+            "q" | "quit" => {
+                if self.dirty {
+                    self.set_status("No write since last change (add ! to override)");
+                    return Ok(false);
+                }
+                return Ok(true);
+            }
+            "q!" | "quit!" => {
+                return Ok(true);
+            }
+            "wq" | "x" => {
+                self.save()?;
+                return Ok(true);
+            }
+            "e" | "edit" => {
+                if let Some(path) = arg.map(PathBuf::from) {
+                    self.file_path = Some(path.clone());
+                    self.reload(&path)?;
+                    self.set_status(format!("Opened {}", path.display()));
+                } else {
+                    self.set_status("Usage: :e <path>");
+                }
+            }
+            _ => {
+                self.set_status(format!("Not an editor command: {}", cmd));
+            }
+        }
+
+        Ok(false)
+    }
+
     fn ensure_cursor_visible(&mut self, viewport_rows: usize, viewport_cols: usize) {
         if self.cursor_row < self.scroll_row {
             self.scroll_row = self.cursor_row;
@@ -280,6 +342,10 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.mode = Mode::Insert;
                 app.set_status("-- INSERT --");
             }
+            (KeyCode::Char(':'), KeyModifiers::NONE) => {
+                app.mode = Mode::Command;
+                app.command_buffer.clear();
+            }
             (KeyCode::Char('h'), KeyModifiers::NONE) | (KeyCode::Left, _) => app.move_left(),
             (KeyCode::Char('j'), KeyModifiers::NONE) | (KeyCode::Down, _) => app.move_down(),
             (KeyCode::Char('k'), KeyModifiers::NONE) | (KeyCode::Up, _) => app.move_up(),
@@ -327,6 +393,30 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Down, _) => app.move_down(),
             _ => {}
         },
+        Mode::Command => match (key.code, key.modifiers) {
+            (KeyCode::Esc, _) => {
+                app.mode = Mode::Normal;
+                app.command_buffer.clear();
+            }
+            (KeyCode::Enter, _) => {
+                let should_quit = app.execute_command()?;
+                app.command_buffer.clear();
+                app.mode = Mode::Normal;
+                if should_quit {
+                    return Ok(true);
+                }
+            }
+            (KeyCode::Backspace, _) => {
+                app.command_buffer.pop();
+            }
+            (KeyCode::Char(ch), KeyModifiers::NONE) => {
+                app.command_buffer.push(ch);
+            }
+            (KeyCode::Char(ch), KeyModifiers::SHIFT) => {
+                app.command_buffer.push(ch);
+            }
+            _ => {}
+        },
     }
 
     Ok(false)
@@ -364,6 +454,7 @@ fn ui(f: &mut Frame<'_>, app: &mut App) {
     let mode_label = match app.mode {
         Mode::Normal => "NORMAL",
         Mode::Insert => "INSERT",
+        Mode::Command => "COMMAND",
     };
     let file_label = app
         .file_path
@@ -384,13 +475,25 @@ fn ui(f: &mut Frame<'_>, app: &mut App) {
         .style(Style::default().fg(Color::Black).bg(Color::White));
     f.render_widget(status_paragraph, status_area);
 
-    let message = Paragraph::new(app.status_message.clone());
+    let message = if app.mode == Mode::Command {
+        Paragraph::new(format!(":{}", app.command_buffer))
+    } else {
+        Paragraph::new(app.status_message.clone())
+    };
     f.render_widget(message, message_area);
 
-    let cursor_x = (app.cursor_col.saturating_sub(app.scroll_col)) as u16 + main_area.x;
-    let cursor_y = (app.cursor_row.saturating_sub(app.scroll_row)) as u16 + main_area.y;
-    if cursor_x < main_area.right() && cursor_y < main_area.bottom() {
-        f.set_cursor_position(Position::new(cursor_x, cursor_y));
+    if app.mode == Mode::Command {
+        let cursor_x = message_area.x + 1 + app.command_buffer.chars().count() as u16;
+        let cursor_y = message_area.y;
+        if cursor_x < message_area.right() && cursor_y < message_area.bottom() {
+            f.set_cursor_position(Position::new(cursor_x, cursor_y));
+        }
+    } else {
+        let cursor_x = (app.cursor_col.saturating_sub(app.scroll_col)) as u16 + main_area.x;
+        let cursor_y = (app.cursor_row.saturating_sub(app.scroll_row)) as u16 + main_area.y;
+        if cursor_x < main_area.right() && cursor_y < main_area.bottom() {
+            f.set_cursor_position(Position::new(cursor_x, cursor_y));
+        }
     }
 }
 

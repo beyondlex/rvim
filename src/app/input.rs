@@ -2,7 +2,10 @@ use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::edit::selection_to_last_visual;
-use super::types::{FindPending, FindSpec, Mode, Operator, OperatorPending, VisualSelectionKind};
+use super::types::{
+    FindPending, FindSpec, Mode, Operator, OperatorPending, TextObjectKind, TextObjectPending,
+    TextObjectTarget, VisualSelectionKind,
+};
 use super::{App, VisualSelection};
 
 pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
@@ -58,6 +61,55 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
         }
     }
 
+    if app.mode == Mode::Normal {
+        if let Some(pending) = app.pending_textobj.take() {
+            if let KeyCode::Char(ch) = key.code {
+                let target = match ch {
+                    'w' => Some(TextObjectTarget::Word),
+                    '{' | '}' => Some(TextObjectTarget::Brace),
+                    '(' | ')' => Some(TextObjectTarget::Paren),
+                    '[' | ']' => Some(TextObjectTarget::Bracket),
+                    '<' | '>' => Some(TextObjectTarget::Angle),
+                    't' => Some(TextObjectTarget::Tag),
+                    '"' => Some(TextObjectTarget::QuoteDouble),
+                    '\'' => Some(TextObjectTarget::QuoteSingle),
+                    _ => None,
+                };
+                if let Some(target) = target {
+                    let range = match target {
+                        TextObjectTarget::Word => {
+                            if matches!(pending.kind, TextObjectKind::Around) {
+                                app.textobj_word_range_around()
+                            } else {
+                                app.textobj_word_range()
+                            }
+                        }
+                        TextObjectTarget::Brace => app.textobj_pair_range('{', '}', pending.kind),
+                        TextObjectTarget::Paren => app.textobj_pair_range('(', ')', pending.kind),
+                        TextObjectTarget::Bracket => app.textobj_pair_range('[', ']', pending.kind),
+                        TextObjectTarget::Angle => app.textobj_pair_range('<', '>', pending.kind),
+                        TextObjectTarget::Tag => app.textobj_tag_range(pending.kind),
+                        TextObjectTarget::QuoteSingle => app.textobj_quote_range('\'', pending.kind),
+                        TextObjectTarget::QuoteDouble => app.textobj_quote_range('"', pending.kind),
+                    };
+                    if let Some(((sr, sc), (er, ec))) = range {
+                        if let Some(op) = app.operator_pending.take() {
+                            app.apply_operator(op.op, (sr, sc), (er, ec));
+                            if op.op == Operator::Change {
+                                app.mode = Mode::Insert;
+                                app.insert_undo_snapshot = false;
+                                app.set_status("-- INSERT --");
+                            }
+                        }
+                    } else {
+                        app.set_status("No text object");
+                    }
+                }
+            }
+            return Ok(false);
+        }
+    }
+
     match app.mode {
         Mode::Normal => match (key.code, key.modifiers) {
             (KeyCode::Char('r'), KeyModifiers::CONTROL) => app.redo(),
@@ -74,20 +126,32 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             }
             (KeyCode::Char('s'), KeyModifiers::CONTROL) => app.save()?,
             (KeyCode::Char('i'), KeyModifiers::NONE) => {
-                app.mode = Mode::Insert;
-                app.operator_pending = None;
-                app.insert_undo_snapshot = false;
-                app.set_status("-- INSERT --");
+                if app.operator_pending.is_some() {
+                    app.pending_textobj = Some(TextObjectPending {
+                        kind: TextObjectKind::Inner,
+                    });
+                } else {
+                    app.mode = Mode::Insert;
+                    app.operator_pending = None;
+                    app.insert_undo_snapshot = false;
+                    app.set_status("-- INSERT --");
+                }
             }
             (KeyCode::Char('a'), KeyModifiers::NONE) => {
-                let len = app.line_len(app.cursor_row);
-                if app.cursor_col < len {
-                    app.cursor_col += 1;
+                if app.operator_pending.is_some() {
+                    app.pending_textobj = Some(TextObjectPending {
+                        kind: TextObjectKind::Around,
+                    });
+                } else {
+                    let len = app.line_len(app.cursor_row);
+                    if app.cursor_col < len {
+                        app.cursor_col += 1;
+                    }
+                    app.mode = Mode::Insert;
+                    app.operator_pending = None;
+                    app.insert_undo_snapshot = false;
+                    app.set_status("-- INSERT --");
                 }
-                app.mode = Mode::Insert;
-                app.operator_pending = None;
-                app.insert_undo_snapshot = false;
-                app.set_status("-- INSERT --");
             }
             (KeyCode::Char('I'), _) => {
                 app.move_line_first_non_blank();

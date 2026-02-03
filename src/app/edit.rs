@@ -39,6 +39,7 @@ impl App {
             pending_g: false,
             operator_pending: None,
             last_find: None,
+            pending_textobj: None,
             quit_confirm: false,
             status_time: None,
             undo_limit: 200,
@@ -125,6 +126,392 @@ impl App {
                 self.insert_char_raw(ch);
             }
         }
+    }
+
+    pub(super) fn textobj_word_range(&self) -> Option<((usize, usize), (usize, usize))> {
+        let line = self.lines.get(self.cursor_row)?;
+        let chars: Vec<char> = line.chars().collect();
+        if self.cursor_col >= chars.len() {
+            return None;
+        }
+        if char_class(chars[self.cursor_col]) != CharClass::Word {
+            return None;
+        }
+        let mut start = self.cursor_col;
+        while start > 0 && char_class(chars[start - 1]) == CharClass::Word {
+            start -= 1;
+        }
+        let mut end = self.cursor_col;
+        while end + 1 < chars.len() && char_class(chars[end + 1]) == CharClass::Word {
+            end += 1;
+        }
+        Some(((self.cursor_row, start), (self.cursor_row, end)))
+    }
+
+    pub(super) fn textobj_word_range_around(&self) -> Option<((usize, usize), (usize, usize))> {
+        let ((row, start), (row2, end)) = self.textobj_word_range()?;
+        if row != row2 {
+            return Some(((row, start), (row2, end)));
+        }
+        let line = self.lines.get(row)?;
+        let chars: Vec<char> = line.chars().collect();
+        let len = chars.len();
+        let mut new_start = start;
+        let mut new_end = end;
+
+        // Vim-like: prefer trailing whitespace, otherwise leading whitespace.
+        if end + 1 < len && chars[end + 1].is_whitespace() {
+            new_end = end + 1;
+            return Some(((row, new_start), (row, new_end)));
+        }
+        if start > 0 && chars[start - 1].is_whitespace() {
+            new_start = start - 1;
+        }
+        Some(((row, new_start), (row, new_end)))
+    }
+
+    pub(super) fn textobj_pair_range(
+        &self,
+        open: char,
+        close: char,
+        kind: super::types::TextObjectKind,
+    ) -> Option<((usize, usize), (usize, usize))> {
+        let (l_row, l_col) = self.find_enclosing_pair_left(open, close)?;
+        let (r_row, r_col) = self.find_matching_close_from(open, close, l_row, l_col)?;
+        match kind {
+            super::types::TextObjectKind::Inner => {
+                let start = if let Some(next) = self.advance_pos(l_row, l_col) {
+                    next
+                } else {
+                    return None;
+                };
+                let end = if let Some(prev) = self.prev_pos(r_row, r_col) {
+                    prev
+                } else {
+                    return None;
+                };
+                Some((start, end))
+            }
+            super::types::TextObjectKind::Around => Some(((l_row, l_col), (r_row, r_col))),
+        }
+    }
+
+    pub(super) fn textobj_quote_range(
+        &self,
+        quote: char,
+        kind: super::types::TextObjectKind,
+    ) -> Option<((usize, usize), (usize, usize))> {
+        let (l_row, l_col) = self.find_enclosing_quote_left(quote)?;
+        let (r_row, r_col) = self.find_matching_quote_from(quote, l_row, l_col)?;
+        match kind {
+            super::types::TextObjectKind::Inner => {
+                let start = if let Some(next) = self.advance_pos(l_row, l_col) {
+                    next
+                } else {
+                    return None;
+                };
+                let end = if let Some(prev) = self.prev_pos(r_row, r_col) {
+                    prev
+                } else {
+                    return None;
+                };
+                Some((start, end))
+            }
+            super::types::TextObjectKind::Around => Some(((l_row, l_col), (r_row, r_col))),
+        }
+    }
+
+    pub(super) fn textobj_tag_range(
+        &self,
+        kind: super::types::TextObjectKind,
+    ) -> Option<((usize, usize), (usize, usize))> {
+        let tag = self.find_enclosing_tag()?;
+        match kind {
+            super::types::TextObjectKind::Inner => {
+                let start = self.advance_pos(tag.open_end.0, tag.open_end.1)?;
+                let end = self.prev_pos(tag.close_start.0, tag.close_start.1)?;
+                Some((start, end))
+            }
+            super::types::TextObjectKind::Around => Some((tag.open_start, tag.close_end)),
+        }
+    }
+
+    fn find_enclosing_pair_left(&self, open: char, close: char) -> Option<(usize, usize)> {
+        let mut depth = 0i32;
+        let mut r = self.cursor_row;
+        let mut c = self.cursor_col;
+        loop {
+            if let Some(ch) = self.char_at(r, c) {
+                if ch == close {
+                    depth += 1;
+                } else if ch == open {
+                    if depth == 0 {
+                        return Some((r, c));
+                    }
+                    depth -= 1;
+                }
+            }
+            if let Some((pr, pc)) = self.prev_pos(r, c) {
+                r = pr;
+                c = pc;
+            } else {
+                break;
+            }
+        }
+        None
+    }
+
+    fn find_matching_close_from(
+        &self,
+        open: char,
+        close: char,
+        row: usize,
+        col: usize,
+    ) -> Option<(usize, usize)> {
+        let mut depth = 0i32;
+        let mut r = row;
+        let mut c = col;
+        loop {
+            if let Some((nr, nc)) = self.advance_pos(r, c) {
+                r = nr;
+                c = nc;
+            } else {
+                break;
+            }
+            if let Some(ch) = self.char_at(r, c) {
+                if ch == open {
+                    depth += 1;
+                } else if ch == close {
+                    if depth == 0 {
+                        return Some((r, c));
+                    }
+                    depth -= 1;
+                }
+            }
+        }
+        None
+    }
+
+    fn find_enclosing_tag(&self) -> Option<TagMatch> {
+        let mut r = self.cursor_row;
+        let mut c = self.cursor_col;
+        loop {
+            if let Some(ch) = self.char_at(r, c) {
+                if ch == '<' {
+                    if let Some(open) = self.parse_tag_at(r, c) {
+                        if open.is_closing || open.is_self_closing {
+                            // skip closing/self-closing
+                        } else {
+                            if let Some(close) =
+                                self.find_matching_tag_close_from(&open.name, open.end)
+                            {
+                                let cursor = (self.cursor_row, self.cursor_col);
+                                if pos_le(open.start, cursor) && pos_le(cursor, close.start) {
+                                    return Some(TagMatch {
+                                        open_start: open.start,
+                                        open_end: open.end,
+                                        close_start: close.start,
+                                        close_end: close.end,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some((pr, pc)) = self.prev_pos(r, c) {
+                r = pr;
+                c = pc;
+            } else {
+                break;
+            }
+        }
+        None
+    }
+
+    fn find_matching_tag_close_from(&self, name: &str, start: (usize, usize)) -> Option<TagClose> {
+        let mut depth = 0i32;
+        let mut r = start.0;
+        let mut c = start.1;
+        loop {
+            if let Some((nr, nc)) = self.advance_pos(r, c) {
+                r = nr;
+                c = nc;
+            } else {
+                break;
+            }
+            if let Some(ch) = self.char_at(r, c) {
+                if ch == '<' {
+                    if let Some(tag) = self.parse_tag_at(r, c) {
+                        if tag.name != name {
+                            continue;
+                        }
+                        if tag.is_self_closing {
+                            continue;
+                        }
+                        if tag.is_closing {
+                            if depth == 0 {
+                                return Some(TagClose {
+                                    start: tag.start,
+                                    end: tag.end,
+                                });
+                            }
+                            depth -= 1;
+                        } else {
+                            depth += 1;
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn parse_tag_at(&self, row: usize, col: usize) -> Option<TagOpen> {
+        if self.char_at(row, col)? != '<' {
+            return None;
+        }
+        let (end_row, end_col) = self.find_tag_end(row, col)?;
+        let inner = self.collect_range_to_string((row, col + 1), (end_row, end_col))?;
+        let inner_trim = inner.trim();
+        if inner_trim.is_empty() || inner_trim.starts_with('!') || inner_trim.starts_with('?') {
+            return None;
+        }
+        let mut s = inner_trim;
+        let mut is_closing = false;
+        if let Some(rest) = s.strip_prefix('/') {
+            is_closing = true;
+            s = rest.trim_start();
+        }
+        let is_self_closing = s.ends_with('/');
+        let s = s.trim_end_matches('/');
+        let name: String = s
+            .chars()
+            .take_while(|ch| ch.is_alphanumeric() || *ch == '_' || *ch == '-' || *ch == ':')
+            .collect();
+        if name.is_empty() {
+            return None;
+        }
+        Some(TagOpen {
+            name,
+            start: (row, col),
+            end: (end_row, end_col),
+            is_closing,
+            is_self_closing,
+        })
+    }
+
+    fn find_tag_end(&self, row: usize, col: usize) -> Option<(usize, usize)> {
+        let mut r = row;
+        let mut c = col;
+        let mut in_quote: Option<char> = None;
+        loop {
+            if let Some(ch) = self.char_at(r, c) {
+                if let Some(q) = in_quote {
+                    if ch == q && !self.is_escaped_at(r, c) {
+                        in_quote = None;
+                    }
+                } else if ch == '"' || ch == '\'' {
+                    in_quote = Some(ch);
+                } else if ch == '>' {
+                    return Some((r, c));
+                }
+            }
+            if let Some((nr, nc)) = self.advance_pos(r, c) {
+                r = nr;
+                c = nc;
+            } else {
+                break;
+            }
+        }
+        None
+    }
+
+    fn collect_range_to_string(
+        &self,
+        start: (usize, usize),
+        end: (usize, usize),
+    ) -> Option<String> {
+        let (start, end) = super::types::normalize_range(start, end);
+        if start.0 == end.0 {
+            let line = self.lines.get(start.0)?;
+            let chars: Vec<char> = line.chars().collect();
+            if start.1 >= chars.len() || end.1 > chars.len() {
+                return None;
+            }
+            return Some(chars[start.1..end.1].iter().collect());
+        }
+        let mut out = String::new();
+        let first = self.lines.get(start.0)?;
+        let first_chars: Vec<char> = first.chars().collect();
+        if start.1 < first_chars.len() {
+            out.extend(first_chars[start.1..].iter());
+        }
+        out.push('\n');
+        for row in (start.0 + 1)..end.0 {
+            out.push_str(self.lines.get(row)?);
+            out.push('\n');
+        }
+        let last = self.lines.get(end.0)?;
+        let last_chars: Vec<char> = last.chars().collect();
+        let end_idx = end.1.min(last_chars.len());
+        out.extend(last_chars[..end_idx].iter());
+        Some(out)
+    }
+
+    fn find_enclosing_quote_left(&self, quote: char) -> Option<(usize, usize)> {
+        let mut r = self.cursor_row;
+        let mut c = self.cursor_col;
+        loop {
+            if let Some(ch) = self.char_at(r, c) {
+                if ch == quote && !self.is_escaped_at(r, c) {
+                    return Some((r, c));
+                }
+            }
+            if let Some((pr, pc)) = self.prev_pos(r, c) {
+                r = pr;
+                c = pc;
+            } else {
+                break;
+            }
+        }
+        None
+    }
+
+    fn find_matching_quote_from(
+        &self,
+        quote: char,
+        row: usize,
+        col: usize,
+    ) -> Option<(usize, usize)> {
+        let mut r = row;
+        let mut c = col;
+        loop {
+            if let Some((nr, nc)) = self.advance_pos(r, c) {
+                r = nr;
+                c = nc;
+            } else {
+                break;
+            }
+            if let Some(ch) = self.char_at(r, c) {
+                if ch == quote && !self.is_escaped_at(r, c) {
+                    return Some((r, c));
+                }
+            }
+        }
+        None
+    }
+
+    fn is_escaped_at(&self, row: usize, col: usize) -> bool {
+        let line = match self.lines.get(row) {
+            Some(l) => l,
+            None => return false,
+        };
+        let chars: Vec<char> = line.chars().collect();
+        if col >= chars.len() {
+            return false;
+        }
+        is_escaped(&chars, col)
     }
 
     pub(super) fn set_status(&mut self, msg: impl Into<String>) {
@@ -925,4 +1312,48 @@ pub(super) fn selection_to_last_visual(selection: VisualSelection, mode: Mode) -
         },
         VisualSelectionKind::Block { start, end } => LastVisual { mode, start, end },
     }
+}
+
+fn is_escaped(chars: &[char], idx: usize) -> bool {
+    if idx == 0 {
+        return false;
+    }
+    let mut backslashes = 0usize;
+    let mut i = idx;
+    while i > 0 {
+        i -= 1;
+        if chars[i] == '\\' {
+            backslashes += 1;
+        } else {
+            break;
+        }
+    }
+    backslashes % 2 == 1
+}
+
+#[derive(Debug, Clone)]
+struct TagOpen {
+    name: String,
+    start: (usize, usize),
+    end: (usize, usize),
+    is_closing: bool,
+    is_self_closing: bool,
+}
+
+#[derive(Debug, Clone)]
+struct TagClose {
+    start: (usize, usize),
+    end: (usize, usize),
+}
+
+#[derive(Debug, Clone)]
+struct TagMatch {
+    open_start: (usize, usize),
+    open_end: (usize, usize),
+    close_start: (usize, usize),
+    close_end: (usize, usize),
+}
+
+fn pos_le(a: (usize, usize), b: (usize, usize)) -> bool {
+    a.0 < b.0 || (a.0 == b.0 && a.1 <= b.1)
 }

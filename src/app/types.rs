@@ -58,6 +58,7 @@ pub struct App {
     pub(crate) pending_g: bool,
     pub(crate) operator_pending: Option<OperatorPending>,
     pub(crate) last_find: Option<FindSpec>,
+    pub(crate) pending_textobj: Option<TextObjectPending>,
     pub(crate) quit_confirm: bool,
     pub(crate) status_time: Option<Instant>,
     pub(crate) undo_limit: usize,
@@ -119,6 +120,29 @@ pub(super) struct FindSpec {
     pub(super) ch: char,
     pub(super) until: bool,
     pub(super) reverse: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) enum TextObjectKind {
+    Inner,
+    Around,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) enum TextObjectTarget {
+    Word,
+    Brace,
+    Paren,
+    Bracket,
+    Angle,
+    Tag,
+    QuoteSingle,
+    QuoteDouble,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct TextObjectPending {
+    pub(super) kind: TextObjectKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

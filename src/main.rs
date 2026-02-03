@@ -332,9 +332,60 @@ impl App {
         self.cursor_col = 0;
     }
 
+    fn move_line_first_non_blank(&mut self) {
+        let mut col = 0;
+        if let Some(line) = self.lines.get(self.cursor_row) {
+            for ch in line.chars() {
+                if !ch.is_whitespace() {
+                    break;
+                }
+                col += 1;
+            }
+        }
+        self.cursor_col = col;
+    }
+
     fn move_line_end(&mut self) {
         let len = self.line_len(self.cursor_row);
         self.cursor_col = if len == 0 { 0 } else { len - 1 };
+    }
+
+    fn move_line_end_insert(&mut self) {
+        let len = self.line_len(self.cursor_row);
+        self.cursor_col = len;
+    }
+
+    fn leading_whitespace(line: &str) -> String {
+        line.chars().take_while(|c| c.is_whitespace()).collect()
+    }
+
+    fn should_increase_indent(line: &str) -> bool {
+        let trimmed = line.trim_end();
+        trimmed.ends_with('{') || trimmed.ends_with('[') || trimmed.ends_with('(')
+    }
+
+    fn should_decrease_indent(line: &str) -> bool {
+        let trimmed = line.trim_start();
+        trimmed.starts_with('}') || trimmed.starts_with(']') || trimmed.starts_with(')')
+    }
+
+    fn increase_indent(indent: &str) -> String {
+        let mut out = indent.to_string();
+        out.push_str("    ");
+        out
+    }
+
+    fn decrease_indent(indent: &str) -> String {
+        if indent.ends_with('\t') {
+            return indent[..indent.len().saturating_sub(1)].to_string();
+        }
+        let mut trimmed = indent.to_string();
+        let mut remove = 0;
+        while remove < 4 && trimmed.ends_with(' ') {
+            trimmed.pop();
+            remove += 1;
+        }
+        trimmed
     }
 
     fn move_to_top(&mut self) {
@@ -1123,9 +1174,17 @@ impl App {
         let line = &mut self.lines[self.cursor_row];
         let byte_idx = char_to_byte_idx(line, self.cursor_col);
         let right = line.split_off(byte_idx);
-        self.lines.insert(self.cursor_row + 1, right);
+        let mut indent = Self::leading_whitespace(line);
+        if Self::should_increase_indent(line) {
+            indent = Self::increase_indent(&indent);
+        } else if Self::should_decrease_indent(&right) {
+            indent = Self::decrease_indent(&indent);
+        }
+        let mut new_line = indent.clone();
+        new_line.push_str(&right);
+        self.lines.insert(self.cursor_row + 1, new_line);
         self.cursor_row += 1;
-        self.cursor_col = 0;
+        self.cursor_col = indent.chars().count();
         self.dirty = true;
     }
 
@@ -1227,17 +1286,27 @@ impl App {
     fn open_line_below(&mut self) {
         self.record_undo();
         self.clear_line_undo();
-        self.lines.insert(self.cursor_row + 1, String::new());
+        let line = &self.lines[self.cursor_row];
+        let mut indent = Self::leading_whitespace(line);
+        if Self::should_increase_indent(line) {
+            indent = Self::increase_indent(&indent);
+        }
+        self.lines.insert(self.cursor_row + 1, indent.clone());
         self.cursor_row += 1;
-        self.cursor_col = 0;
+        self.cursor_col = indent.chars().count();
         self.dirty = true;
     }
 
     fn open_line_above(&mut self) {
         self.record_undo();
         self.clear_line_undo();
-        self.lines.insert(self.cursor_row, String::new());
-        self.cursor_col = 0;
+        let line = &self.lines[self.cursor_row];
+        let mut indent = Self::leading_whitespace(line);
+        if Self::should_decrease_indent(line) {
+            indent = Self::decrease_indent(&indent);
+        }
+        self.lines.insert(self.cursor_row, indent.clone());
+        self.cursor_col = indent.chars().count();
         self.dirty = true;
     }
 
@@ -1605,6 +1674,30 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.save()?;
             }
             (KeyCode::Char('i'), KeyModifiers::NONE) => {
+                app.mode = Mode::Insert;
+                app.operator_pending = None;
+                app.insert_undo_snapshot = false;
+                app.set_status("-- INSERT --");
+            }
+            (KeyCode::Char('a'), KeyModifiers::NONE) => {
+                let len = app.line_len(app.cursor_row);
+                if app.cursor_col < len {
+                    app.cursor_col += 1;
+                }
+                app.mode = Mode::Insert;
+                app.operator_pending = None;
+                app.insert_undo_snapshot = false;
+                app.set_status("-- INSERT --");
+            }
+            (KeyCode::Char('I'), _) => {
+                app.move_line_first_non_blank();
+                app.mode = Mode::Insert;
+                app.operator_pending = None;
+                app.insert_undo_snapshot = false;
+                app.set_status("-- INSERT --");
+            }
+            (KeyCode::Char('A'), _) => {
+                app.move_line_end_insert();
                 app.mode = Mode::Insert;
                 app.operator_pending = None;
                 app.insert_undo_snapshot = false;

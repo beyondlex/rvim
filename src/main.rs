@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{
+    self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEvent, KeyModifiers,
+};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{execute, terminal};
 use ratatui::layout::{Constraint, Direction, Layout};
@@ -1049,6 +1051,67 @@ impl App {
         self.dirty = true;
     }
 
+    fn insert_char_raw(&mut self, ch: char) {
+        if let Some(block) = &mut self.block_insert {
+            for row in block.start_row..=block.end_row {
+                if row >= self.lines.len() {
+                    break;
+                }
+                let line = &mut self.lines[row];
+                let col = if block.append {
+                    line.chars().count()
+                } else {
+                    block.col
+                };
+                let len = line.chars().count();
+                if col > len {
+                    line.push_str(&" ".repeat(col - len));
+                }
+                let byte_idx = char_to_byte_idx(line, col);
+                line.insert(byte_idx, ch);
+            }
+            block.col += 1;
+            self.cursor_col = block.col;
+            self.dirty = true;
+            return;
+        }
+        let line = &mut self.lines[self.cursor_row];
+        let byte_idx = char_to_byte_idx(line, self.cursor_col);
+        line.insert(byte_idx, ch);
+        self.cursor_col += 1;
+        self.dirty = true;
+    }
+
+    fn insert_newline_raw(&mut self) {
+        if self.block_insert.is_some() {
+            self.block_insert_newline();
+            return;
+        }
+        let line = &mut self.lines[self.cursor_row];
+        let byte_idx = char_to_byte_idx(line, self.cursor_col);
+        let right = line.split_off(byte_idx);
+        self.lines.insert(self.cursor_row + 1, right);
+        self.cursor_row += 1;
+        self.cursor_col = 0;
+        self.dirty = true;
+    }
+
+    fn insert_text(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        self.record_undo();
+        self.insert_undo_snapshot = true;
+        self.clear_line_undo();
+        for ch in text.chars() {
+            if ch == '\n' {
+                self.insert_newline_raw();
+            } else {
+                self.insert_char_raw(ch);
+            }
+        }
+    }
+
     fn insert_newline(&mut self) {
         self.record_undo();
         if self.block_insert.is_some() {
@@ -1411,7 +1474,7 @@ struct TerminalGuard;
 impl TerminalGuard {
     fn enter() -> Result<Self> {
         enable_raw_mode()?;
-        execute!(io::stdout(), EnterAlternateScreen)?;
+        execute!(io::stdout(), EnterAlternateScreen, EnableBracketedPaste)?;
         Ok(Self)
     }
 }
@@ -1419,7 +1482,7 @@ impl TerminalGuard {
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
         let _ = disable_raw_mode();
-        let _ = execute!(io::stdout(), LeaveAlternateScreen);
+        let _ = execute!(io::stdout(), DisableBracketedPaste, LeaveAlternateScreen);
     }
 }
 
@@ -1441,10 +1504,18 @@ fn main() -> Result<()> {
         terminal.draw(|f| ui(f, &mut app))?;
 
         if event::poll(Duration::from_millis(50))? {
-            if let Event::Key(key) = event::read()? {
-                if handle_key(&mut app, key)? {
-                    break;
+            match event::read()? {
+                Event::Key(key) => {
+                    if handle_key(&mut app, key)? {
+                        break;
+                    }
                 }
+                Event::Paste(text) => {
+                    if app.mode == Mode::Insert {
+                        app.insert_text(&text);
+                    }
+                }
+                _ => {}
             }
         }
     }

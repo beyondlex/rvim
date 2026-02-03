@@ -15,6 +15,9 @@ Start with a minimal usable editor, then incrementally add modal editing and ext
 ## Current Status (MVP)
 - Terminal UI (crossterm + ratatui)
 - Basic buffer editing, file open/save, simple modes, scrolling
+- Modal editing (Normal/Insert/Visual/Command)
+- Basic motions, operators, and visual selection
+- Undo/redo + bracketed paste
 
 ## Roadmap
 
@@ -27,19 +30,20 @@ Checklist:
 - [x] Scrollable viewport
 - [x] Save (Ctrl+S)
 - [x] Quit with dirty confirmation (Ctrl+Q)
-- [ ] Basic cursor info + status messages polish
+- [x] Basic cursor info + status messages polish
 - [ ] Input edge cases (multi-byte chars, wide glyphs)
 
 ### Phase 2 — Modal Core
 Goal: Minimal Vim-like feel.
 
 Checklist:
-- [ ] Command line (":" prompt)
-- [ ] `:w`, `:q`, `:wq`, `:e`
-- [ ] Motions: w, b, e, 0, $, gg, G
-- [ ] Operators: d, y, c (with motions)
-- [ ] Visual mode (char-wise)
-- [ ] Registers (unnamed + simple named)
+- [x] Command line (":" prompt)
+- [x] `:w`, `:q`, `:wq`, `:e`
+- [x] Motions: w, b, e, 0, $, gg, G
+- [x] Operators: d, y, c (with motions)
+- [x] Visual mode (char-wise)
+- [x] Visual mode (line/block)
+- [x] Registers (unnamed + simple named)
 - [ ] Macro record/playback (single register)
 
 ### Phase 3 — Reliability & Performance
@@ -47,7 +51,7 @@ Goal: Scale to large files; improve correctness.
 
 Checklist:
 - [ ] Rope-based buffer (ropey)
-- [ ] Undo/redo (command log)
+- [x] Undo/redo (command log)
 - [ ] Incremental re-rendering
 - [ ] Crash-safe recovery (swap/backup)
 - [ ] Tests for editor core (buffer, cursor, motions)
@@ -68,6 +72,12 @@ Checklist:
 - [ ] LSP client (tower-lsp)
 - [ ] Syntax highlighting (tree-sitter)
 - [ ] File explorer
+
+## Implementation Notes (recent)
+- Bracketed paste enabled for faster Insert-mode paste.
+- Cursor style differs by mode (Insert = bar).
+- Smart indent supports `{[(` and optional `:` rules; `:set shiftwidth=` and `:set indentcolon`.
+- Codebase split into modules under `src/app/` plus `src/ui.rs`.
 
 ## Architecture Sketch
 

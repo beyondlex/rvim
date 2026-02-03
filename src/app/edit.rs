@@ -780,6 +780,7 @@ impl App {
         }
         let len = self.line_len(self.cursor_row);
         if self.cursor_col < len {
+            self.yank_range((self.cursor_row, self.cursor_col), (self.cursor_row, self.cursor_col));
             self.set_line_undo(self.cursor_row);
             let line = &mut self.lines[self.cursor_row];
             let byte_idx = char_to_byte_idx(line, self.cursor_col);
@@ -1028,9 +1029,15 @@ impl App {
 
     pub(super) fn apply_operator(&mut self, op: Operator, start: (usize, usize), end: (usize, usize)) {
         match op {
-            Operator::Delete => self.delete_range(start, end),
+            Operator::Delete => {
+                self.yank_range(start, end);
+                self.delete_range(start, end);
+            }
             Operator::Yank => self.yank_range(start, end),
-            Operator::Change => self.delete_range(start, end),
+            Operator::Change => {
+                self.yank_range(start, end);
+                self.delete_range(start, end);
+            }
         }
     }
 

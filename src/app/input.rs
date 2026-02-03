@@ -212,6 +212,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Char('d'), KeyModifiers::NONE) => {
                 if let Some(op) = app.operator_pending.take() {
                     if op.op == Operator::Delete {
+                        app.yank_line(app.cursor_row);
                         app.delete_line(app.cursor_row);
                         return Ok(false);
                     }
@@ -238,6 +239,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Char('c'), KeyModifiers::NONE) => {
                 if let Some(op) = app.operator_pending.take() {
                     if op.op == Operator::Change {
+                        app.yank_line(app.cursor_row);
                         app.delete_line(app.cursor_row);
                         app.mode = Mode::Insert;
                         app.insert_undo_snapshot = false;
@@ -495,9 +497,18 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Char('d'), KeyModifiers::NONE) => {
                 if let Some(selection) = app.visual_selection() {
                     match selection.kind {
-                        VisualSelectionKind::Char(start, end) => app.delete_range(start, end),
-                        VisualSelectionKind::Line(start, end) => app.delete_lines(start, end),
-                        VisualSelectionKind::Block { start, end } => app.delete_block(start, end),
+                        VisualSelectionKind::Char(start, end) => {
+                            app.yank_range(start, end);
+                            app.delete_range(start, end);
+                        }
+                        VisualSelectionKind::Line(start, end) => {
+                            app.yank_lines(start, end);
+                            app.delete_lines(start, end);
+                        }
+                        VisualSelectionKind::Block { start, end } => {
+                            app.yank_block(start, end);
+                            app.delete_block(start, end);
+                        }
                     }
                     app.last_visual = Some(selection_to_last_visual(selection, app.mode));
                 }
@@ -507,9 +518,18 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Char('c'), KeyModifiers::NONE) => {
                 if let Some(selection) = app.visual_selection() {
                     match selection.kind {
-                        VisualSelectionKind::Char(start, end) => app.delete_range(start, end),
-                        VisualSelectionKind::Line(start, end) => app.delete_lines(start, end),
-                        VisualSelectionKind::Block { start, end } => app.delete_block(start, end),
+                        VisualSelectionKind::Char(start, end) => {
+                            app.yank_range(start, end);
+                            app.delete_range(start, end);
+                        }
+                        VisualSelectionKind::Line(start, end) => {
+                            app.yank_lines(start, end);
+                            app.delete_lines(start, end);
+                        }
+                        VisualSelectionKind::Block { start, end } => {
+                            app.yank_block(start, end);
+                            app.delete_block(start, end);
+                        }
                     }
                     app.last_visual = Some(selection_to_last_visual(selection, app.mode));
                 }

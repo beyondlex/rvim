@@ -1875,10 +1875,42 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Char('j'), KeyModifiers::NONE) | (KeyCode::Down, _) => app.move_down(),
             (KeyCode::Char('k'), KeyModifiers::NONE) | (KeyCode::Up, _) => app.move_up(),
             (KeyCode::Char('l'), KeyModifiers::NONE) | (KeyCode::Right, _) => app.move_right(),
-            (KeyCode::Char('w'), KeyModifiers::NONE) => app.move_word_forward(),
+            (KeyCode::Char('w'), KeyModifiers::NONE) => {
+                if let Some(op) = app.operator_pending.take() {
+                    app.move_word_forward();
+                    let mut end = (app.cursor_row, app.cursor_col);
+                    if let Some(prev) = app.prev_pos(end.0, end.1) {
+                        end = prev;
+                    }
+                    app.apply_operator(op.op, (op.start_row, op.start_col), end);
+                    if op.op == Operator::Change {
+                        app.mode = Mode::Insert;
+                        app.insert_undo_snapshot = false;
+                        app.set_status("-- INSERT --");
+                    }
+                } else {
+                    app.move_word_forward();
+                }
+            }
             (KeyCode::Char('b'), KeyModifiers::NONE) => app.move_word_back(),
             (KeyCode::Char('e'), KeyModifiers::NONE) => app.move_word_end(),
-            (KeyCode::Char('W'), _) => app.move_big_word_forward(),
+            (KeyCode::Char('W'), _) => {
+                if let Some(op) = app.operator_pending.take() {
+                    app.move_big_word_forward();
+                    let mut end = (app.cursor_row, app.cursor_col);
+                    if let Some(prev) = app.prev_pos(end.0, end.1) {
+                        end = prev;
+                    }
+                    app.apply_operator(op.op, (op.start_row, op.start_col), end);
+                    if op.op == Operator::Change {
+                        app.mode = Mode::Insert;
+                        app.insert_undo_snapshot = false;
+                        app.set_status("-- INSERT --");
+                    }
+                } else {
+                    app.move_big_word_forward();
+                }
+            }
             (KeyCode::Char('B'), _) => app.move_big_word_back(),
             (KeyCode::Char('E'), _) => app.move_big_word_end(),
             (KeyCode::Char('0'), KeyModifiers::NONE) => app.move_line_start(),

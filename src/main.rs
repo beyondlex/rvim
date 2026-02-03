@@ -16,6 +16,7 @@ enum Mode {
     Normal,
     Insert,
     Command,
+    Visual,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +52,7 @@ struct App {
     operator_pending: Option<OperatorPending>,
     yank_buffer: String,
     find_cross_line: bool,
+    visual_start: Option<(usize, usize)>,
 }
 
 impl App {
@@ -78,6 +80,7 @@ impl App {
             operator_pending: None,
             yank_buffer: String::new(),
             find_cross_line: true,
+            visual_start: None,
         }
     }
 
@@ -462,6 +465,14 @@ impl App {
             Operator::Yank => self.yank_range(start, end),
             Operator::Change => self.delete_range(start, end),
         }
+    }
+
+    fn visual_range(&self) -> Option<((usize, usize), (usize, usize))> {
+        if self.mode != Mode::Visual {
+            return None;
+        }
+        let start = self.visual_start?;
+        Some(normalize_range(start, (self.cursor_row, self.cursor_col)))
     }
 
     fn next_word_start(&self, row: usize, col: usize) -> Option<(usize, usize)> {
@@ -970,7 +981,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
     {
         app.pending_g = false;
     }
-    if app.mode == Mode::Normal {
+    if matches!(app.mode, Mode::Normal | Mode::Visual) {
         if let Some(pending) = app.pending_find.take() {
             if let KeyCode::Char(ch) = key.code {
                 let found = if pending.reverse {
@@ -992,15 +1003,17 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                     });
                 }
             }
-            if let Some(op) = app.operator_pending.take() {
-                app.apply_operator(
-                    op.op,
-                    (op.start_row, op.start_col),
-                    (app.cursor_row, app.cursor_col),
-                );
-                if op.op == Operator::Change {
-                    app.mode = Mode::Insert;
-                    app.set_status("-- INSERT --");
+            if app.mode == Mode::Normal {
+                if let Some(op) = app.operator_pending.take() {
+                    app.apply_operator(
+                        op.op,
+                        (op.start_row, op.start_col),
+                        (app.cursor_row, app.cursor_col),
+                    );
+                    if op.op == Operator::Change {
+                        app.mode = Mode::Insert;
+                        app.set_status("-- INSERT --");
+                    }
                 }
             }
             return Ok(false);
@@ -1024,6 +1037,12 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.mode = Mode::Insert;
                 app.operator_pending = None;
                 app.set_status("-- INSERT --");
+            }
+            (KeyCode::Char('v'), KeyModifiers::NONE) => {
+                app.mode = Mode::Visual;
+                app.visual_start = Some((app.cursor_row, app.cursor_col));
+                app.operator_pending = None;
+                app.set_status("-- VISUAL --");
             }
             (KeyCode::Char(':'), KeyModifiers::NONE) => {
                 app.mode = Mode::Command;
@@ -1225,6 +1244,117 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             }
             _ => {}
         },
+        Mode::Visual => match (key.code, key.modifiers) {
+            (KeyCode::Esc, _) | (KeyCode::Char('v'), KeyModifiers::NONE) => {
+                app.mode = Mode::Normal;
+                app.visual_start = None;
+                app.set_status("-- NORMAL --");
+            }
+            (KeyCode::Char('y'), KeyModifiers::NONE) => {
+                if let Some((start, end)) = app.visual_range() {
+                    app.yank_range(start, end);
+                }
+                app.mode = Mode::Normal;
+                app.visual_start = None;
+            }
+            (KeyCode::Char('d'), KeyModifiers::NONE) => {
+                if let Some((start, end)) = app.visual_range() {
+                    app.delete_range(start, end);
+                }
+                app.mode = Mode::Normal;
+                app.visual_start = None;
+            }
+            (KeyCode::Char('c'), KeyModifiers::NONE) => {
+                if let Some((start, end)) = app.visual_range() {
+                    app.delete_range(start, end);
+                }
+                app.mode = Mode::Insert;
+                app.visual_start = None;
+                app.set_status("-- INSERT --");
+            }
+            (KeyCode::Char('h'), KeyModifiers::NONE) | (KeyCode::Left, _) => app.move_left(),
+            (KeyCode::Char('j'), KeyModifiers::NONE) | (KeyCode::Down, _) => app.move_down(),
+            (KeyCode::Char('k'), KeyModifiers::NONE) | (KeyCode::Up, _) => app.move_up(),
+            (KeyCode::Char('l'), KeyModifiers::NONE) | (KeyCode::Right, _) => app.move_right(),
+            (KeyCode::Char('w'), KeyModifiers::NONE) => app.move_word_forward(),
+            (KeyCode::Char('b'), KeyModifiers::NONE) => app.move_word_back(),
+            (KeyCode::Char('e'), KeyModifiers::NONE) => app.move_word_end(),
+            (KeyCode::Char('W'), _) => app.move_big_word_forward(),
+            (KeyCode::Char('B'), _) => app.move_big_word_back(),
+            (KeyCode::Char('E'), _) => app.move_big_word_end(),
+            (KeyCode::Char('0'), KeyModifiers::NONE) => app.move_line_start(),
+            (KeyCode::Char('$'), _) => app.move_line_end(),
+            (KeyCode::Char('g'), KeyModifiers::NONE) => {
+                if app.pending_g {
+                    app.move_to_top();
+                    app.pending_g = false;
+                } else {
+                    app.pending_g = true;
+                }
+            }
+            (KeyCode::Char('G'), _) => app.move_to_bottom(),
+            (KeyCode::Char('f'), KeyModifiers::NONE) => {
+                app.pending_find = Some(FindPending {
+                    until: false,
+                    reverse: false,
+                });
+            }
+            (KeyCode::Char('t'), KeyModifiers::NONE) => {
+                app.pending_find = Some(FindPending {
+                    until: true,
+                    reverse: false,
+                });
+            }
+            (KeyCode::Char('F'), _) => {
+                app.pending_find = Some(FindPending {
+                    until: false,
+                    reverse: true,
+                });
+            }
+            (KeyCode::Char('T'), _) => {
+                app.pending_find = Some(FindPending {
+                    until: true,
+                    reverse: true,
+                });
+            }
+            (KeyCode::Char(';'), KeyModifiers::NONE) => {
+                if let Some(spec) = app.last_find {
+                    let found = if spec.reverse {
+                        app.find_backward(spec.ch, spec.until)
+                    } else {
+                        app.find_forward(spec.ch, spec.until)
+                    };
+                    if !found {
+                        app.set_status(format!(
+                            "Pattern not found: {}{}",
+                            if spec.reverse { "F" } else { "f" },
+                            spec.ch
+                        ));
+                    }
+                } else {
+                    app.set_status("No previous find");
+                }
+            }
+            (KeyCode::Char(','), KeyModifiers::NONE) => {
+                if let Some(spec) = app.last_find {
+                    let found = if spec.reverse {
+                        app.find_forward(spec.ch, spec.until)
+                    } else {
+                        app.find_backward(spec.ch, spec.until)
+                    };
+                    if !found {
+                        app.set_status(format!(
+                            "Pattern not found: {}{}",
+                            if spec.reverse { "f" } else { "F" },
+                            spec.ch
+                        ));
+                    }
+                } else {
+                    app.set_status("No previous find");
+                }
+            }
+            _ => {}
+        },
     }
 
     if app.mode == Mode::Normal {
@@ -1261,11 +1391,17 @@ fn ui(f: &mut Frame<'_>, app: &mut App) {
     app.ensure_cursor_visible(viewport_rows, viewport_cols);
 
     let mut text_lines: Vec<Line> = Vec::with_capacity(viewport_rows);
+    let selection = app.visual_range();
     for i in 0..viewport_rows {
         let idx = app.scroll_row + i;
         if let Some(line) = app.lines.get(idx) {
-            let slice = slice_line(line, app.scroll_col, viewport_cols);
-            text_lines.push(Line::from(slice));
+            text_lines.push(render_line_with_selection(
+                line,
+                idx,
+                app.scroll_col,
+                viewport_cols,
+                selection,
+            ));
         } else {
             text_lines.push(Line::from("~"));
         }
@@ -1278,6 +1414,7 @@ fn ui(f: &mut Frame<'_>, app: &mut App) {
         Mode::Normal => "NORMAL",
         Mode::Insert => "INSERT",
         Mode::Command => "COMMAND",
+        Mode::Visual => "VISUAL",
     };
     let file_label = app
         .file_path
@@ -1333,4 +1470,79 @@ fn slice_line(line: &str, start_col: usize, max_cols: usize) -> String {
         }
     }
     out
+}
+
+fn render_line_with_selection(
+    line: &str,
+    line_idx: usize,
+    start_col: usize,
+    max_cols: usize,
+    selection: Option<((usize, usize), (usize, usize))>,
+) -> Line<'static> {
+    let mut spans: Vec<Span> = Vec::new();
+    let mut col = 0;
+    let mut buf = String::new();
+    let mut buf_selected = false;
+
+    let (sel_start, sel_end) = match selection {
+        Some(r) => r,
+        None => return Line::from(slice_line(line, start_col, max_cols)),
+    };
+
+    let within_line = line_idx >= sel_start.0 && line_idx <= sel_end.0;
+    let mut is_selected = |c: usize| -> bool {
+        if !within_line {
+            return false;
+        }
+        if sel_start.0 == sel_end.0 {
+            c >= sel_start.1 && c <= sel_end.1
+        } else if line_idx == sel_start.0 {
+            c >= sel_start.1
+        } else if line_idx == sel_end.0 {
+            c <= sel_end.1
+        } else {
+            true
+        }
+    };
+
+    for ch in line.chars() {
+        if col >= start_col && (col - start_col) < max_cols {
+            let selected = is_selected(col);
+            if buf.is_empty() {
+                buf_selected = selected;
+                buf.push(ch);
+            } else if selected == buf_selected {
+                buf.push(ch);
+            } else {
+                spans.push(Span::styled(
+                    buf.clone(),
+                    if buf_selected {
+                        Style::default().fg(Color::Black).bg(Color::Cyan)
+                    } else {
+                        Style::default()
+                    },
+                ));
+                buf.clear();
+                buf_selected = selected;
+                buf.push(ch);
+            }
+        }
+        col += 1;
+        if (col.saturating_sub(start_col)) >= max_cols {
+            break;
+        }
+    }
+
+    if !buf.is_empty() {
+        spans.push(Span::styled(
+            buf,
+            if buf_selected {
+                Style::default().fg(Color::Black).bg(Color::Cyan)
+            } else {
+                Style::default()
+            },
+        ));
+    }
+
+    Line::from(spans)
 }

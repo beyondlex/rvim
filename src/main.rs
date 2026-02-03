@@ -55,6 +55,7 @@ struct App {
     yank_buffer: String,
     find_cross_line: bool,
     visual_start: Option<(usize, usize)>,
+    block_insert: Option<BlockInsert>,
 }
 
 impl App {
@@ -83,6 +84,7 @@ impl App {
             yank_buffer: String::new(),
             find_cross_line: true,
             visual_start: None,
+            block_insert: None,
         }
     }
 
@@ -576,6 +578,23 @@ impl App {
         }
     }
 
+    fn selection_summary(&self) -> Option<String> {
+        let selection = self.visual_selection()?;
+        let summary = match selection {
+            VisualSelection::Char((start, end)) => {
+                let count = char_count_in_range(self, start, end);
+                format!("{} chars", count)
+            }
+            VisualSelection::Line(start, end) => format!("{} lines", end - start + 1),
+            VisualSelection::Block { start, end } => {
+                let rows = end.0 - start.0 + 1;
+                let cols = end.1.saturating_sub(start.1) + 1;
+                format!("{}x{}", rows, cols)
+            }
+        };
+        Some(summary)
+    }
+
     fn next_word_start(&self, row: usize, col: usize) -> Option<(usize, usize)> {
         let cur = self.class_at(row, col)?;
         if cur == CharClass::Space {
@@ -803,6 +822,25 @@ impl App {
     }
 
     fn insert_char(&mut self, ch: char) {
+        if let Some(block) = &mut self.block_insert {
+            for row in block.start_row..=block.end_row {
+                if row >= self.lines.len() {
+                    break;
+                }
+                let line = &mut self.lines[row];
+                let col = if block.append {
+                    line.chars().count()
+                } else {
+                    block.col.min(line.chars().count())
+                };
+                let byte_idx = char_to_byte_idx(line, col);
+                line.insert(byte_idx, ch);
+            }
+            block.col += 1;
+            self.cursor_col = block.col;
+            self.dirty = true;
+            return;
+        }
         let line = &mut self.lines[self.cursor_row];
         let byte_idx = char_to_byte_idx(line, self.cursor_col);
         line.insert(byte_idx, ch);
@@ -811,6 +849,9 @@ impl App {
     }
 
     fn insert_newline(&mut self) {
+        if self.block_insert.is_some() {
+            return;
+        }
         let line = &mut self.lines[self.cursor_row];
         let byte_idx = char_to_byte_idx(line, self.cursor_col);
         let right = line.split_off(byte_idx);
@@ -821,6 +862,29 @@ impl App {
     }
 
     fn backspace(&mut self) {
+        if let Some(block) = &mut self.block_insert {
+            if block.col == 0 {
+                return;
+            }
+            let target_col = block.col - 1;
+            for row in block.start_row..=block.end_row {
+                if row >= self.lines.len() {
+                    break;
+                }
+                let line = &mut self.lines[row];
+                let len = line.chars().count();
+                if target_col >= len {
+                    continue;
+                }
+                let byte_idx = char_to_byte_idx(line, target_col);
+                let next_idx = char_to_byte_idx(line, target_col + 1);
+                line.replace_range(byte_idx..next_idx, "");
+            }
+            block.col -= 1;
+            self.cursor_col = block.col;
+            self.dirty = true;
+            return;
+        }
         if self.cursor_col > 0 {
             let line = &mut self.lines[self.cursor_row];
             let byte_idx = char_to_byte_idx(line, self.cursor_col);
@@ -840,6 +904,9 @@ impl App {
     }
 
     fn delete_at_cursor(&mut self) {
+        if self.block_insert.is_some() {
+            return;
+        }
         let len = self.line_len(self.cursor_row);
         if self.cursor_col < len {
             let line = &mut self.lines[self.cursor_row];
@@ -997,6 +1064,21 @@ fn pos_le(a: (usize, usize), b: (usize, usize)) -> bool {
     a.0 < b.0 || (a.0 == b.0 && a.1 <= b.1)
 }
 
+fn char_count_in_range(app: &App, start: (usize, usize), end: (usize, usize)) -> usize {
+    let (start, end) = normalize_range(start, end);
+    if start.0 == end.0 {
+        return end.1.saturating_sub(start.1) + 1;
+    }
+    let mut count = 0;
+    let start_len = app.line_len(start.0);
+    count += start_len.saturating_sub(start.1);
+    for row in (start.0 + 1)..end.0 {
+        count += app.line_len(row);
+    }
+    count += end.1 + 1;
+    count
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CharClass {
     Space,
@@ -1032,6 +1114,14 @@ enum VisualSelection {
     Char(((usize, usize), (usize, usize))),
     Line(usize, usize),
     Block { start: (usize, usize), end: (usize, usize) },
+}
+
+#[derive(Debug, Clone, Copy)]
+struct BlockInsert {
+    start_row: usize,
+    end_row: usize,
+    col: usize,
+    append: bool,
 }
 
 struct TerminalGuard;
@@ -1322,6 +1412,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             }
             (KeyCode::Esc, _) => {
                 app.mode = Mode::Normal;
+                app.block_insert = None;
                 app.set_status("-- NORMAL --");
             }
             (KeyCode::Char('s'), KeyModifiers::CONTROL) => {
@@ -1408,6 +1499,75 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.mode = Mode::Insert;
                 app.visual_start = None;
                 app.set_status("-- INSERT --");
+            }
+            (KeyCode::Char('p'), KeyModifiers::NONE) | (KeyCode::Char('P'), _) => {
+                let start = if let Some(selection) = app.visual_selection() {
+                    match selection {
+                        VisualSelection::Char((start, end)) => {
+                            app.delete_range(start, end);
+                            start
+                        }
+                        VisualSelection::Line(start, end) => {
+                            app.delete_lines(start, end);
+                            (start, 0)
+                        }
+                        VisualSelection::Block { start, end } => {
+                            app.delete_block(start, end);
+                            start
+                        }
+                    }
+                } else {
+                    (app.cursor_row, app.cursor_col)
+                };
+                app.cursor_row = start.0;
+                app.cursor_col = start.1;
+                app.paste_before();
+                app.mode = Mode::Normal;
+                app.visual_start = None;
+            }
+            (KeyCode::Char('I'), _) => {
+                if matches!(app.mode, Mode::VisualBlock) {
+                    if let Some(VisualSelection::Block { start, end }) = app.visual_selection() {
+                        app.block_insert = Some(BlockInsert {
+                            start_row: start.0,
+                            end_row: end.0,
+                            col: start.1,
+                            append: false,
+                        });
+                        app.cursor_row = start.0;
+                        app.cursor_col = start.1;
+                        app.mode = Mode::Insert;
+                        app.visual_start = None;
+                        app.set_status("-- INSERT --");
+                    }
+                }
+            }
+            (KeyCode::Char('A'), _) => {
+                if matches!(app.mode, Mode::VisualBlock) {
+                    if let Some(VisualSelection::Block { start, end }) = app.visual_selection() {
+                        let mut max_col = 0;
+                        for row in start.0..=end.0 {
+                            if row >= app.lines.len() {
+                                break;
+                            }
+                            let len = app.line_len(row);
+                            if len > max_col {
+                                max_col = len;
+                            }
+                        }
+                        app.block_insert = Some(BlockInsert {
+                            start_row: start.0,
+                            end_row: end.0,
+                            col: max_col,
+                            append: true,
+                        });
+                        app.cursor_row = start.0;
+                        app.cursor_col = max_col;
+                        app.mode = Mode::Insert;
+                        app.visual_start = None;
+                        app.set_status("-- INSERT --");
+                    }
+                }
             }
             (KeyCode::Char('h'), KeyModifiers::NONE) | (KeyCode::Left, _) => app.move_left(),
             (KeyCode::Char('j'), KeyModifiers::NONE) | (KeyCode::Down, _) => app.move_down(),
@@ -1561,7 +1721,7 @@ fn ui(f: &mut Frame<'_>, app: &mut App) {
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "[No Name]".to_string());
     let dirty = if app.dirty { " [+]" } else { "" };
-    let status = format!(
+    let mut status = format!(
         "{} | {}{} | {}:{}",
         mode_label,
         file_label,
@@ -1569,6 +1729,12 @@ fn ui(f: &mut Frame<'_>, app: &mut App) {
         app.cursor_row + 1,
         app.cursor_col + 1
     );
+    if matches!(app.mode, Mode::VisualChar | Mode::VisualLine | Mode::VisualBlock) {
+        if let Some(summary) = app.selection_summary() {
+            status.push_str(" | ");
+            status.push_str(&summary);
+        }
+    }
 
     let status_paragraph = Paragraph::new(status)
         .style(Style::default().fg(Color::Black).bg(Color::White));

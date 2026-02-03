@@ -61,53 +61,55 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
         }
     }
 
-    if app.mode == Mode::Normal {
-        if let Some(pending) = app.pending_textobj.take() {
-            if let KeyCode::Char(ch) = key.code {
-                let target = match ch {
-                    'w' => Some(TextObjectTarget::Word),
-                    '{' | '}' => Some(TextObjectTarget::Brace),
-                    '(' | ')' => Some(TextObjectTarget::Paren),
-                    '[' | ']' => Some(TextObjectTarget::Bracket),
-                    '<' | '>' => Some(TextObjectTarget::Angle),
-                    't' => Some(TextObjectTarget::Tag),
-                    '"' => Some(TextObjectTarget::QuoteDouble),
-                    '\'' => Some(TextObjectTarget::QuoteSingle),
-                    _ => None,
-                };
-                if let Some(target) = target {
-                    let range = match target {
-                        TextObjectTarget::Word => {
-                            if matches!(pending.kind, TextObjectKind::Around) {
-                                app.textobj_word_range_around()
-                            } else {
-                                app.textobj_word_range()
-                            }
+    if let Some(pending) = app.pending_textobj.take() {
+        if let KeyCode::Char(ch) = key.code {
+            let target = match ch {
+                'w' => Some(TextObjectTarget::Word),
+                '{' | '}' => Some(TextObjectTarget::Brace),
+                '(' | ')' => Some(TextObjectTarget::Paren),
+                '[' | ']' => Some(TextObjectTarget::Bracket),
+                '<' | '>' => Some(TextObjectTarget::Angle),
+                't' => Some(TextObjectTarget::Tag),
+                '"' => Some(TextObjectTarget::QuoteDouble),
+                '\'' => Some(TextObjectTarget::QuoteSingle),
+                _ => None,
+            };
+            if let Some(target) = target {
+                let range = match target {
+                    TextObjectTarget::Word => {
+                        if matches!(pending.kind, TextObjectKind::Around) {
+                            app.textobj_word_range_around()
+                        } else {
+                            app.textobj_word_range()
                         }
-                        TextObjectTarget::Brace => app.textobj_pair_range('{', '}', pending.kind),
-                        TextObjectTarget::Paren => app.textobj_pair_range('(', ')', pending.kind),
-                        TextObjectTarget::Bracket => app.textobj_pair_range('[', ']', pending.kind),
-                        TextObjectTarget::Angle => app.textobj_pair_range('<', '>', pending.kind),
-                        TextObjectTarget::Tag => app.textobj_tag_range(pending.kind),
-                        TextObjectTarget::QuoteSingle => app.textobj_quote_range('\'', pending.kind),
-                        TextObjectTarget::QuoteDouble => app.textobj_quote_range('"', pending.kind),
-                    };
-                    if let Some(((sr, sc), (er, ec))) = range {
-                        if let Some(op) = app.operator_pending.take() {
-                            app.apply_operator(op.op, (sr, sc), (er, ec));
-                            if op.op == Operator::Change {
-                                app.mode = Mode::Insert;
-                                app.insert_undo_snapshot = false;
-                                app.set_status("-- INSERT --");
-                            }
-                        }
-                    } else {
-                        app.set_status("No text object");
                     }
+                    TextObjectTarget::Brace => app.textobj_pair_range('{', '}', pending.kind),
+                    TextObjectTarget::Paren => app.textobj_pair_range('(', ')', pending.kind),
+                    TextObjectTarget::Bracket => app.textobj_pair_range('[', ']', pending.kind),
+                    TextObjectTarget::Angle => app.textobj_pair_range('<', '>', pending.kind),
+                    TextObjectTarget::Tag => app.textobj_tag_range(pending.kind),
+                    TextObjectTarget::QuoteSingle => app.textobj_quote_range('\'', pending.kind),
+                    TextObjectTarget::QuoteDouble => app.textobj_quote_range('"', pending.kind),
+                };
+                if let Some(((sr, sc), (er, ec))) = range {
+                    if matches!(app.mode, Mode::VisualChar | Mode::VisualLine | Mode::VisualBlock) {
+                        app.visual_start = Some((sr, sc));
+                        app.cursor_row = er;
+                        app.cursor_col = ec;
+                    } else if let Some(op) = app.operator_pending.take() {
+                        app.apply_operator(op.op, (sr, sc), (er, ec));
+                        if op.op == Operator::Change {
+                            app.mode = Mode::Insert;
+                            app.insert_undo_snapshot = false;
+                            app.set_status("-- INSERT --");
+                        }
+                    }
+                } else {
+                    app.set_status("No text object");
                 }
             }
-            return Ok(false);
         }
+        return Ok(false);
     }
 
     match app.mode {
@@ -537,6 +539,16 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.insert_undo_snapshot = false;
                 app.visual_start = None;
                 app.set_status("-- INSERT --");
+            }
+            (KeyCode::Char('i'), KeyModifiers::NONE) => {
+                app.pending_textobj = Some(TextObjectPending {
+                    kind: TextObjectKind::Inner,
+                });
+            }
+            (KeyCode::Char('a'), KeyModifiers::NONE) => {
+                app.pending_textobj = Some(TextObjectPending {
+                    kind: TextObjectKind::Around,
+                });
             }
             (KeyCode::Char('p'), KeyModifiers::NONE) | (KeyCode::Char('P'), _) => {
                 let selection = app.visual_selection();

@@ -82,6 +82,17 @@ impl App {
         self.lines.get(row).and_then(|l| l.chars().nth(col))
     }
 
+    fn class_at(&self, row: usize, col: usize) -> Option<CharClass> {
+        let len = self.line_len(row);
+        if col == len {
+            return Some(CharClass::Space);
+        }
+        if col > len {
+            return None;
+        }
+        self.char_at(row, col).map(char_class)
+    }
+
     fn advance_pos(&self, row: usize, col: usize) -> Option<(usize, usize)> {
         let len = self.line_len(row);
         if col < len {
@@ -193,136 +204,138 @@ impl App {
     }
 
     fn next_word_start(&self, row: usize, col: usize) -> Option<(usize, usize)> {
-        let mut r = row;
-        let mut c = col;
-
-        if self.char_at(r, c).map(is_word_char).unwrap_or(false) {
-            while let Some(ch) = self.char_at(r, c) {
-                if !is_word_char(ch) {
-                    break;
-                }
-                if let Some((nr, nc)) = self.advance_pos(r, c) {
-                    r = nr;
-                    c = nc;
-                } else {
-                    return None;
-                }
-            }
+        let cur = self.class_at(row, col)?;
+        if cur == CharClass::Space {
+            return self.skip_spaces_forward(row, col);
         }
 
+        let after = self.advance_to_next_class(row, col, cur)?;
+        self.skip_spaces_forward(after.0, after.1)
+    }
+
+    fn next_word_end(&self, row: usize, col: usize) -> Option<(usize, usize)> {
+        let cur = self.class_at(row, col)?;
+        if cur == CharClass::Space {
+            let (sr, sc) = self.skip_spaces_forward(row, col)?;
+            let cls = self.class_at(sr, sc)?;
+            return Some(self.end_of_group(sr, sc, cls));
+        }
+
+        let end = self.end_of_group(row, col, cur);
+        if end != (row, col) {
+            return Some(end);
+        }
+
+        let next = self.advance_pos(row, col)?;
+        let (sr, sc) = self.skip_spaces_forward(next.0, next.1)?;
+        let cls = self.class_at(sr, sc)?;
+        Some(self.end_of_group(sr, sc, cls))
+    }
+
+    fn prev_word_start(&self, row: usize, col: usize) -> Option<(usize, usize)> {
+        let cur = self.class_at(row, col)?;
+        if cur == CharClass::Space {
+            let (r, c) = self.skip_spaces_backward(row, col)?;
+            let cls = self.class_at(r, c)?;
+            return Some(self.start_of_group(r, c, cls));
+        }
+
+        if self.is_group_start(row, col, cur) {
+            let prev = self.prev_pos(row, col)?;
+            let (r, c) = self.skip_spaces_backward(prev.0, prev.1)?;
+            let cls = self.class_at(r, c)?;
+            return Some(self.start_of_group(r, c, cls));
+        }
+
+        Some(self.start_of_group(row, col, cur))
+    }
+
+    fn skip_spaces_forward(&self, row: usize, col: usize) -> Option<(usize, usize)> {
+        let mut r = row;
+        let mut c = col;
         loop {
-            match self.char_at(r, c) {
-                Some(ch) if is_word_char(ch) => return Some((r, c)),
-                Some(_) => {
-                    if let Some((nr, nc)) = self.advance_pos(r, c) {
-                        r = nr;
-                        c = nc;
-                    } else {
-                        return None;
-                    }
+            match self.class_at(r, c) {
+                Some(CharClass::Space) => {
+                    let next = self.advance_pos(r, c)?;
+                    r = next.0;
+                    c = next.1;
                 }
-                None => {
-                    if let Some((nr, nc)) = self.advance_pos(r, c) {
-                        r = nr;
-                        c = nc;
-                    } else {
-                        return None;
-                    }
-                }
+                Some(_) => return Some((r, c)),
+                None => return None,
             }
         }
     }
 
-    fn next_word_end(&self, row: usize, col: usize) -> Option<(usize, usize)> {
+    fn skip_spaces_backward(&self, row: usize, col: usize) -> Option<(usize, usize)> {
         let mut r = row;
         let mut c = col;
-
-        if self.char_at(r, c).map(is_word_char).unwrap_or(false) {
-            let mut moved = false;
-            while let Some((nr, nc)) = self.advance_pos(r, c) {
-                if let Some(ch) = self.char_at(nr, nc) {
-                    if is_word_char(ch) {
-                        r = nr;
-                        c = nc;
-                        moved = true;
-                    } else {
-                        break;
-                    }
-                } else {
-                    break;
+        loop {
+            match self.class_at(r, c) {
+                Some(CharClass::Space) => {
+                    let prev = self.prev_pos(r, c)?;
+                    r = prev.0;
+                    c = prev.1;
                 }
+                Some(_) => return Some((r, c)),
+                None => return None,
             }
-            if moved {
-                return Some((r, c));
-            }
-            let (sr, sc) = self.next_word_start(r, c)?;
-            r = sr;
-            c = sc;
-            while let Some((nr, nc)) = self.advance_pos(r, c) {
-                if let Some(ch) = self.char_at(nr, nc) {
-                    if is_word_char(ch) {
-                        r = nr;
-                        c = nc;
-                    } else {
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
-            return Some((r, c));
         }
+    }
 
-        let (sr, sc) = self.next_word_start(r, c)?;
-        let mut r = sr;
-        let mut c = sc;
-        while let Some((nr, nc)) = self.advance_pos(r, c) {
-            if let Some(ch) = self.char_at(nr, nc) {
-                if is_word_char(ch) {
-                    r = nr;
-                    c = nc;
-                } else {
-                    break;
+    fn advance_to_next_class(
+        &self,
+        row: usize,
+        col: usize,
+        class: CharClass,
+    ) -> Option<(usize, usize)> {
+        let mut r = row;
+        let mut c = col;
+        loop {
+            let next = self.advance_pos(r, c)?;
+            match self.class_at(next.0, next.1) {
+                Some(next_class) if next_class == class => {
+                    r = next.0;
+                    c = next.1;
                 }
+                Some(_) => return Some(next),
+                None => return None,
+            }
+        }
+    }
+
+    fn start_of_group(&self, row: usize, col: usize, class: CharClass) -> (usize, usize) {
+        let mut r = row;
+        let mut c = col;
+        while let Some((pr, pc)) = self.prev_pos(r, c) {
+            if self.class_at(pr, pc) == Some(class) {
+                r = pr;
+                c = pc;
             } else {
                 break;
             }
         }
-        Some((r, c))
+        (r, c)
     }
 
-    fn prev_word_start(&self, row: usize, col: usize) -> Option<(usize, usize)> {
-        let mut pos = if self.char_at(row, col).map(is_word_char).unwrap_or(false) {
-            if let Some((pr, pc)) = self.prev_pos(row, col) {
-                if self.char_at(pr, pc).map(is_word_char).unwrap_or(false) {
-                    Some((pr, pc))
-                } else {
-                    self.prev_pos(row, col)
-                }
+    fn end_of_group(&self, row: usize, col: usize, class: CharClass) -> (usize, usize) {
+        let mut r = row;
+        let mut c = col;
+        while let Some((nr, nc)) = self.advance_pos(r, c) {
+            if self.class_at(nr, nc) == Some(class) {
+                r = nr;
+                c = nc;
             } else {
-                None
+                break;
             }
-        } else {
-            self.prev_pos(row, col)
-        };
-
-        while let Some((r, c)) = pos {
-            if self.char_at(r, c).map(is_word_char).unwrap_or(false) {
-                let mut sr = r;
-                let mut sc = c;
-                while let Some((pr, pc)) = self.prev_pos(sr, sc) {
-                    if self.char_at(pr, pc).map(is_word_char).unwrap_or(false) {
-                        sr = pr;
-                        sc = pc;
-                    } else {
-                        break;
-                    }
-                }
-                return Some((sr, sc));
-            }
-            pos = self.prev_pos(r, c);
         }
-        None
+        (r, c)
+    }
+
+    fn is_group_start(&self, row: usize, col: usize, class: CharClass) -> bool {
+        match self.prev_pos(row, col) {
+            Some((pr, pc)) => self.class_at(pr, pc) != Some(class),
+            None => true,
+        }
     }
 
     fn insert_char(&mut self, ch: char) {
@@ -487,8 +500,21 @@ fn char_to_byte_idx(s: &str, char_idx: usize) -> usize {
         .unwrap_or_else(|| s.len())
 }
 
-fn is_word_char(ch: char) -> bool {
-    ch.is_alphanumeric() || ch == '_'
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CharClass {
+    Space,
+    Word,
+    Punct,
+}
+
+fn char_class(ch: char) -> CharClass {
+    if ch.is_whitespace() {
+        CharClass::Space
+    } else if ch.is_alphanumeric() || ch == '_' {
+        CharClass::Word
+    } else {
+        CharClass::Punct
+    }
 }
 
 struct TerminalGuard;

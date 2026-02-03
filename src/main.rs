@@ -28,6 +28,13 @@ enum Operator {
     Change,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum YankType {
+    Char,
+    Line,
+    Block,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct OperatorPending {
     op: Operator,
@@ -53,9 +60,11 @@ struct App {
     last_find: Option<FindSpec>,
     operator_pending: Option<OperatorPending>,
     yank_buffer: String,
+    yank_type: YankType,
     find_cross_line: bool,
     visual_start: Option<(usize, usize)>,
     block_insert: Option<BlockInsert>,
+    last_visual: Option<LastVisual>,
 }
 
 impl App {
@@ -82,9 +91,11 @@ impl App {
             last_find: None,
             operator_pending: None,
             yank_buffer: String::new(),
+            yank_type: YankType::Char,
             find_cross_line: true,
             visual_start: None,
             block_insert: None,
+            last_visual: None,
         }
     }
 
@@ -376,6 +387,7 @@ impl App {
             let len = line.chars().count();
             if len == 0 {
                 self.yank_buffer.clear();
+                self.yank_type = YankType::Char;
                 return;
             }
             let start_idx = char_to_byte_idx(line, start.1);
@@ -405,6 +417,7 @@ impl App {
             out.push_str(&end_line[..end_idx]);
         }
         self.yank_buffer = out;
+        self.yank_type = YankType::Char;
     }
 
     fn delete_lines(&mut self, start_row: usize, end_row: usize) {
@@ -425,6 +438,7 @@ impl App {
     fn yank_lines(&mut self, start_row: usize, end_row: usize) {
         if self.lines.is_empty() {
             self.yank_buffer.clear();
+            self.yank_type = YankType::Line;
             return;
         }
         let start = start_row.min(self.lines.len() - 1);
@@ -437,6 +451,7 @@ impl App {
             }
         }
         self.yank_buffer = out;
+        self.yank_type = YankType::Line;
     }
 
     fn delete_block(&mut self, start: (usize, usize), end: (usize, usize)) {
@@ -492,6 +507,7 @@ impl App {
             }
         }
         self.yank_buffer = out;
+        self.yank_type = YankType::Block;
     }
 
     fn delete_line(&mut self, row: usize) {
@@ -510,23 +526,31 @@ impl App {
     fn yank_line(&mut self, row: usize) {
         let row = row.min(self.lines.len().saturating_sub(1));
         self.yank_buffer = self.lines.get(row).cloned().unwrap_or_default();
+        self.yank_type = YankType::Line;
     }
 
     fn paste_after(&mut self) {
         if self.yank_buffer.is_empty() {
             return;
         }
-        if self.yank_buffer.contains('\n') {
-            let insert_at = (self.cursor_row + 1).min(self.lines.len());
-            let lines: Vec<String> = self.yank_buffer.split('\n').map(|s| s.to_string()).collect();
-            self.lines.splice(insert_at..insert_at, lines);
-            self.cursor_row = insert_at;
-            self.cursor_col = 0;
-        } else {
-            let line = &mut self.lines[self.cursor_row];
-            let byte_idx = char_to_byte_idx(line, self.cursor_col + 1);
-            line.insert_str(byte_idx, &self.yank_buffer);
-            self.cursor_col += self.yank_buffer.chars().count();
+        match self.yank_type {
+            YankType::Line => {
+                let insert_at = (self.cursor_row + 1).min(self.lines.len());
+                let lines: Vec<String> =
+                    self.yank_buffer.split('\n').map(|s| s.to_string()).collect();
+                self.lines.splice(insert_at..insert_at, lines);
+                self.cursor_row = insert_at;
+                self.cursor_col = 0;
+            }
+            YankType::Block => {
+                self.paste_block_at(self.cursor_row, self.cursor_col);
+            }
+            YankType::Char => {
+                let line = &mut self.lines[self.cursor_row];
+                let byte_idx = char_to_byte_idx(line, self.cursor_col + 1);
+                line.insert_str(byte_idx, &self.yank_buffer);
+                self.cursor_col += self.yank_buffer.chars().count();
+            }
         }
         self.dirty = true;
     }
@@ -535,19 +559,40 @@ impl App {
         if self.yank_buffer.is_empty() {
             return;
         }
-        if self.yank_buffer.contains('\n') {
-            let insert_at = self.cursor_row.min(self.lines.len());
-            let lines: Vec<String> = self.yank_buffer.split('\n').map(|s| s.to_string()).collect();
-            self.lines.splice(insert_at..insert_at, lines);
-            self.cursor_row = insert_at;
-            self.cursor_col = 0;
-        } else {
-            let line = &mut self.lines[self.cursor_row];
-            let byte_idx = char_to_byte_idx(line, self.cursor_col);
-            line.insert_str(byte_idx, &self.yank_buffer);
-            self.cursor_col += self.yank_buffer.chars().count();
+        match self.yank_type {
+            YankType::Line => {
+                let insert_at = self.cursor_row.min(self.lines.len());
+                let lines: Vec<String> =
+                    self.yank_buffer.split('\n').map(|s| s.to_string()).collect();
+                self.lines.splice(insert_at..insert_at, lines);
+                self.cursor_row = insert_at;
+                self.cursor_col = 0;
+            }
+            YankType::Block => {
+                self.paste_block_at(self.cursor_row, self.cursor_col);
+            }
+            YankType::Char => {
+                let line = &mut self.lines[self.cursor_row];
+                let byte_idx = char_to_byte_idx(line, self.cursor_col);
+                line.insert_str(byte_idx, &self.yank_buffer);
+                self.cursor_col += self.yank_buffer.chars().count();
+            }
         }
         self.dirty = true;
+    }
+
+    fn paste_block_at(&mut self, row: usize, col: usize) {
+        let mut r = row;
+        for line_text in self.yank_buffer.split('\n') {
+            if r >= self.lines.len() {
+                self.lines.push(String::new());
+            }
+            let line = &mut self.lines[r];
+            let insert_col = col.min(line.chars().count());
+            let byte_idx = char_to_byte_idx(line, insert_col);
+            line.insert_str(byte_idx, line_text);
+            r += 1;
+        }
     }
 
     fn apply_operator(&mut self, op: Operator, start: (usize, usize), end: (usize, usize)) {
@@ -850,6 +895,7 @@ impl App {
 
     fn insert_newline(&mut self) {
         if self.block_insert.is_some() {
+            self.block_insert_newline();
             return;
         }
         let line = &mut self.lines[self.cursor_row];
@@ -901,6 +947,34 @@ impl App {
             self.cursor_col = prev_len;
             self.dirty = true;
         }
+    }
+
+    fn block_insert_newline(&mut self) {
+        let Some(block) = self.block_insert.take() else {
+            return;
+        };
+        let mut row = block.end_row;
+        loop {
+            if row >= self.lines.len() {
+                if row == 0 {
+                    break;
+                }
+                row -= 1;
+                continue;
+            }
+            let line = &mut self.lines[row];
+            let col = block.col.min(line.chars().count());
+            let byte_idx = char_to_byte_idx(line, col);
+            let right = line.split_off(byte_idx);
+            self.lines.insert(row + 1, right);
+            if row == block.start_row {
+                break;
+            }
+            row = row.saturating_sub(1);
+        }
+        self.cursor_row = block.start_row + 1;
+        self.cursor_col = 0;
+        self.dirty = true;
     }
 
     fn delete_at_cursor(&mut self) {
@@ -1079,6 +1153,18 @@ fn char_count_in_range(app: &App, start: (usize, usize), end: (usize, usize)) ->
     count
 }
 
+fn selection_to_last_visual(selection: VisualSelection, mode: Mode) -> LastVisual {
+    match selection {
+        VisualSelection::Char((start, end)) => LastVisual { mode, start, end },
+        VisualSelection::Line(start, end) => LastVisual {
+            mode,
+            start: (start, 0),
+            end: (end, 0),
+        },
+        VisualSelection::Block { start, end } => LastVisual { mode, start, end },
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CharClass {
     Space,
@@ -1122,6 +1208,13 @@ struct BlockInsert {
     end_row: usize,
     col: usize,
     append: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LastVisual {
+    mode: Mode,
+    start: (usize, usize),
+    end: (usize, usize),
 }
 
 struct TerminalGuard;
@@ -1175,7 +1268,9 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
     if !is_quit {
         app.quit_confirm = false;
     }
-    if app.pending_g && !(matches!(key.code, KeyCode::Char('g')) && key.modifiers == KeyModifiers::NONE)
+    if app.pending_g
+        && !matches!(key.code, KeyCode::Char('g') | KeyCode::Char('v'))
+        && key.modifiers == KeyModifiers::NONE
     {
         app.pending_g = false;
     }
@@ -1240,10 +1335,29 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.set_status("-- INSERT --");
             }
             (KeyCode::Char('v'), KeyModifiers::NONE) => {
-                app.mode = Mode::VisualChar;
-                app.visual_start = Some((app.cursor_row, app.cursor_col));
-                app.operator_pending = None;
-                app.set_status("-- VISUAL --");
+                if app.pending_g {
+                    app.pending_g = false;
+                    if let Some(last) = app.last_visual {
+                        app.mode = last.mode;
+                        app.visual_start = Some(last.start);
+                        app.cursor_row = last.end.0;
+                        app.cursor_col = last.end.1;
+                        let label = match app.mode {
+                            Mode::VisualChar => "-- VISUAL --",
+                            Mode::VisualLine => "-- VISUAL LINE --",
+                            Mode::VisualBlock => "-- VISUAL BLOCK --",
+                            _ => "-- VISUAL --",
+                        };
+                        app.set_status(label);
+                    } else {
+                        app.set_status("No previous visual selection");
+                    }
+                } else {
+                    app.mode = Mode::VisualChar;
+                    app.visual_start = Some((app.cursor_row, app.cursor_col));
+                    app.operator_pending = None;
+                    app.set_status("-- VISUAL --");
+                }
             }
             (KeyCode::Char('V'), _) => {
                 app.mode = Mode::VisualLine;
@@ -1462,6 +1576,21 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Esc, _)
             | (KeyCode::Char('v'), KeyModifiers::NONE)
             | (KeyCode::Char('V'), _) => {
+                if let Some(selection) = app.visual_selection() {
+                    let end = (app.cursor_row, app.cursor_col);
+                    app.last_visual = Some(LastVisual {
+                        mode: app.mode,
+                        start: app.visual_start.unwrap_or(end),
+                        end,
+                    });
+                    if let VisualSelection::Line(start, end_row) = selection {
+                        app.last_visual = Some(LastVisual {
+                            mode: app.mode,
+                            start: (start, 0),
+                            end: (end_row, 0),
+                        });
+                    }
+                }
                 app.mode = Mode::Normal;
                 app.visual_start = None;
                 app.set_status("-- NORMAL --");
@@ -1473,6 +1602,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                         VisualSelection::Line(start, end) => app.yank_lines(start, end),
                         VisualSelection::Block { start, end } => app.yank_block(start, end),
                     }
+                    app.last_visual = Some(selection_to_last_visual(selection, app.mode));
                 }
                 app.mode = Mode::Normal;
                 app.visual_start = None;
@@ -1484,6 +1614,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                         VisualSelection::Line(start, end) => app.delete_lines(start, end),
                         VisualSelection::Block { start, end } => app.delete_block(start, end),
                     }
+                    app.last_visual = Some(selection_to_last_visual(selection, app.mode));
                 }
                 app.mode = Mode::Normal;
                 app.visual_start = None;
@@ -1495,13 +1626,15 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                         VisualSelection::Line(start, end) => app.delete_lines(start, end),
                         VisualSelection::Block { start, end } => app.delete_block(start, end),
                     }
+                    app.last_visual = Some(selection_to_last_visual(selection, app.mode));
                 }
                 app.mode = Mode::Insert;
                 app.visual_start = None;
                 app.set_status("-- INSERT --");
             }
             (KeyCode::Char('p'), KeyModifiers::NONE) | (KeyCode::Char('P'), _) => {
-                let start = if let Some(selection) = app.visual_selection() {
+                let selection = app.visual_selection();
+                let start = if let Some(selection) = selection {
                     match selection {
                         VisualSelection::Char((start, end)) => {
                             app.delete_range(start, end);
@@ -1522,6 +1655,9 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.cursor_row = start.0;
                 app.cursor_col = start.1;
                 app.paste_before();
+                if let Some(selection) = selection {
+                    app.last_visual = Some(selection_to_last_visual(selection, app.mode));
+                }
                 app.mode = Mode::Normal;
                 app.visual_start = None;
             }

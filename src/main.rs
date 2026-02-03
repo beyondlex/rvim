@@ -4,11 +4,12 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
+use crossterm::cursor::SetCursorStyle;
 use crossterm::event::{
     self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyCode, KeyEvent, KeyModifiers,
 };
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
-use crossterm::{execute, terminal};
+use crossterm::execute;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph};
@@ -1498,6 +1499,7 @@ fn main() -> Result<()> {
     terminal.clear()?;
 
     let mut app = App::new(path, content);
+    apply_cursor_style(&app)?;
 
     loop {
         app.clear_status_if_stale();
@@ -1517,6 +1519,7 @@ fn main() -> Result<()> {
                 }
                 _ => {}
             }
+            apply_cursor_style(&app)?;
         }
     }
 
@@ -2114,6 +2117,18 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
     }
 
     Ok(false)
+}
+
+fn apply_cursor_style(app: &App) -> Result<()> {
+    match app.mode {
+        Mode::Insert => {
+            execute!(io::stdout(), SetCursorStyle::SteadyBar)?;
+        }
+        _ => {
+            execute!(io::stdout(), SetCursorStyle::SteadyBlock)?;
+        }
+    }
+    Ok(())
 }
 
 fn ui(f: &mut Frame<'_>, app: &mut App) {

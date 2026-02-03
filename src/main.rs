@@ -32,6 +32,8 @@ struct App {
     status_time: Option<Instant>,
     command_buffer: String,
     pending_g: bool,
+    pending_find: Option<FindPending>,
+    last_find: Option<FindSpec>,
 }
 
 impl App {
@@ -54,6 +56,8 @@ impl App {
             status_time: None,
             command_buffer: String::new(),
             pending_g: false,
+            pending_find: None,
+            last_find: None,
         }
     }
 
@@ -201,6 +205,46 @@ impl App {
             self.cursor_row = row;
             self.cursor_col = col;
         }
+    }
+
+    fn find_in_line(&mut self, target: char, until: bool) -> bool {
+        let Some(line) = self.lines.get(self.cursor_row) else {
+            return false;
+        };
+        for (idx, ch) in line.chars().enumerate() {
+            if idx <= self.cursor_col {
+                continue;
+            }
+            if ch == target {
+                self.cursor_col = if until && idx > 0 { idx - 1 } else { idx };
+                return true;
+            }
+        }
+        false
+    }
+
+    fn find_in_line_backward(&mut self, target: char, until: bool) -> bool {
+        let Some(line) = self.lines.get(self.cursor_row) else {
+            return false;
+        };
+        let mut last_match: Option<usize> = None;
+        for (idx, ch) in line.chars().enumerate() {
+            if idx >= self.cursor_col {
+                break;
+            }
+            if ch == target {
+                last_match = Some(idx);
+            }
+        }
+        if let Some(idx) = last_match {
+            self.cursor_col = if until && idx + 1 <= self.cursor_col {
+                idx + 1
+            } else {
+                idx
+            };
+            return true;
+        }
+        false
     }
 
     fn next_word_start(&self, row: usize, col: usize) -> Option<(usize, usize)> {
@@ -517,6 +561,19 @@ fn char_class(ch: char) -> CharClass {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct FindPending {
+    until: bool,
+    reverse: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FindSpec {
+    ch: char,
+    until: bool,
+    reverse: bool,
+}
+
 struct TerminalGuard;
 
 impl TerminalGuard {
@@ -572,6 +629,27 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
     {
         app.pending_g = false;
     }
+    if app.mode == Mode::Normal {
+        if let Some(pending) = app.pending_find.take() {
+            if let KeyCode::Char(ch) = key.code {
+                let found = if pending.reverse {
+                    app.find_in_line_backward(ch, pending.until)
+                } else {
+                    app.find_in_line(ch, pending.until)
+                };
+                if !found {
+                    app.set_status("Pattern not found");
+                } else {
+                    app.last_find = Some(FindSpec {
+                        ch,
+                        until: pending.until,
+                        reverse: pending.reverse,
+                    });
+                }
+            }
+            return Ok(false);
+        }
+    }
 
     match app.mode {
         Mode::Normal => match (key.code, key.modifiers) {
@@ -612,6 +690,54 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 }
             }
             (KeyCode::Char('G'), _) => app.move_to_bottom(),
+            (KeyCode::Char('f'), KeyModifiers::NONE) => {
+                app.pending_find = Some(FindPending {
+                    until: false,
+                    reverse: false,
+                });
+            }
+            (KeyCode::Char('t'), KeyModifiers::NONE) => {
+                app.pending_find = Some(FindPending {
+                    until: true,
+                    reverse: false,
+                });
+            }
+            (KeyCode::Char('F'), _) => {
+                app.pending_find = Some(FindPending {
+                    until: false,
+                    reverse: true,
+                });
+            }
+            (KeyCode::Char('T'), _) => {
+                app.pending_find = Some(FindPending {
+                    until: true,
+                    reverse: true,
+                });
+            }
+            (KeyCode::Char(';'), KeyModifiers::NONE) => {
+                if let Some(spec) = app.last_find {
+                    let found = if spec.reverse {
+                        app.find_in_line_backward(spec.ch, spec.until)
+                    } else {
+                        app.find_in_line(spec.ch, spec.until)
+                    };
+                    if !found {
+                        app.set_status("Pattern not found");
+                    }
+                }
+            }
+            (KeyCode::Char(','), KeyModifiers::NONE) => {
+                if let Some(spec) = app.last_find {
+                    let found = if spec.reverse {
+                        app.find_in_line(spec.ch, spec.until)
+                    } else {
+                        app.find_in_line_backward(spec.ch, spec.until)
+                    };
+                    if !found {
+                        app.set_status("Pattern not found");
+                    }
+                }
+            }
             (KeyCode::Char('x'), KeyModifiers::NONE) => app.delete_at_cursor(),
             (KeyCode::Char('o'), KeyModifiers::NONE) => {
                 app.open_line_below();

@@ -65,6 +65,12 @@ struct App {
     visual_start: Option<(usize, usize)>,
     block_insert: Option<BlockInsert>,
     last_visual: Option<LastVisual>,
+    undo_stack: Vec<EditorState>,
+    redo_stack: Vec<EditorState>,
+    is_restoring: bool,
+    insert_undo_snapshot: bool,
+    undo_limit: usize,
+    line_undo: Option<LineUndo>,
 }
 
 impl App {
@@ -96,7 +102,116 @@ impl App {
             visual_start: None,
             block_insert: None,
             last_visual: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            is_restoring: false,
+            insert_undo_snapshot: false,
+            undo_limit: 200,
+            line_undo: None,
         }
+    }
+
+    fn snapshot(&self) -> EditorState {
+        EditorState {
+            lines: self.lines.clone(),
+            cursor_row: self.cursor_row,
+            cursor_col: self.cursor_col,
+            scroll_row: self.scroll_row,
+            scroll_col: self.scroll_col,
+            dirty: self.dirty,
+        }
+    }
+
+    fn restore(&mut self, state: EditorState) {
+        self.is_restoring = true;
+        self.lines = state.lines;
+        if self.lines.is_empty() {
+            self.lines.push(String::new());
+        }
+        self.cursor_row = state.cursor_row.min(self.lines.len().saturating_sub(1));
+        let len = self.line_len(self.cursor_row);
+        self.cursor_col = state.cursor_col.min(len);
+        self.scroll_row = state.scroll_row;
+        self.scroll_col = state.scroll_col;
+        self.dirty = state.dirty;
+        self.pending_g = false;
+        self.pending_find = None;
+        self.operator_pending = None;
+        self.block_insert = None;
+        self.visual_start = None;
+        self.line_undo = None;
+        self.is_restoring = false;
+    }
+
+    fn record_undo(&mut self) {
+        if self.is_restoring {
+            return;
+        }
+        if self.mode == Mode::Insert && self.insert_undo_snapshot {
+            return;
+        }
+        self.undo_stack.push(self.snapshot());
+        if self.undo_stack.len() > self.undo_limit {
+            let overflow = self.undo_stack.len() - self.undo_limit;
+            self.undo_stack.drain(0..overflow);
+        }
+        self.redo_stack.clear();
+        if self.mode == Mode::Insert {
+            self.insert_undo_snapshot = true;
+        }
+    }
+
+    fn undo(&mut self) {
+        if let Some(state) = self.undo_stack.pop() {
+            let current = self.snapshot();
+            self.redo_stack.push(current);
+            self.restore(state);
+            self.insert_undo_snapshot = false;
+        }
+    }
+
+    fn redo(&mut self) {
+        if let Some(state) = self.redo_stack.pop() {
+            let current = self.snapshot();
+            self.undo_stack.push(current);
+            self.restore(state);
+            self.insert_undo_snapshot = false;
+        }
+    }
+
+    fn set_line_undo(&mut self, row: usize) {
+        if row >= self.lines.len() {
+            return;
+        }
+        match self.line_undo {
+            Some(ref lu) if lu.row == row => {}
+            _ => {
+                self.line_undo = Some(LineUndo {
+                    row,
+                    line: self.lines[row].clone(),
+                });
+            }
+        }
+    }
+
+    fn clear_line_undo(&mut self) {
+        self.line_undo = None;
+    }
+
+    fn undo_line(&mut self) {
+        let Some(lu) = self.line_undo.take() else {
+            self.set_status("No line undo");
+            return;
+        };
+        if lu.row >= self.lines.len() {
+            return;
+        }
+        self.record_undo();
+        self.lines[lu.row] = lu.line;
+        self.cursor_row = lu.row;
+        let len = self.line_len(self.cursor_row);
+        self.cursor_col = self.cursor_col.min(len);
+        self.dirty = true;
     }
 
     fn set_status(&mut self, msg: impl Into<String>) {
@@ -166,21 +281,29 @@ impl App {
     }
 
     fn move_left(&mut self) {
+        let prev_row = self.cursor_row;
         if self.cursor_col > 0 {
             self.cursor_col -= 1;
         } else if self.cursor_row > 0 {
             self.cursor_row -= 1;
             self.cursor_col = self.line_len(self.cursor_row);
         }
+        if self.cursor_row != prev_row {
+            self.clear_line_undo();
+        }
     }
 
     fn move_right(&mut self) {
+        let prev_row = self.cursor_row;
         let len = self.line_len(self.cursor_row);
         if self.cursor_col < len {
             self.cursor_col += 1;
         } else if self.cursor_row + 1 < self.lines.len() {
             self.cursor_row += 1;
             self.cursor_col = 0;
+        }
+        if self.cursor_row != prev_row {
+            self.clear_line_undo();
         }
     }
 
@@ -189,6 +312,7 @@ impl App {
             self.cursor_row -= 1;
             let len = self.line_len(self.cursor_row);
             self.cursor_col = self.cursor_col.min(len);
+            self.clear_line_undo();
         }
     }
 
@@ -197,6 +321,7 @@ impl App {
             self.cursor_row += 1;
             let len = self.line_len(self.cursor_row);
             self.cursor_col = self.cursor_col.min(len);
+            self.clear_line_undo();
         }
     }
 
@@ -267,6 +392,7 @@ impl App {
     }
 
     fn find_forward(&mut self, target: char, until: bool) -> bool {
+        let prev_row = self.cursor_row;
         let mut row = self.cursor_row;
         let mut col = self.cursor_col + 1;
 
@@ -285,6 +411,9 @@ impl App {
                     }
                     self.cursor_row = target_pos.0;
                     self.cursor_col = target_pos.1;
+                    if self.cursor_row != prev_row {
+                        self.clear_line_undo();
+                    }
                     return true;
                 }
             }
@@ -301,6 +430,7 @@ impl App {
         if self.lines.is_empty() {
             return false;
         }
+        let prev_row = self.cursor_row;
         let mut row = self.cursor_row;
         let mut col = self.cursor_col;
 
@@ -324,6 +454,9 @@ impl App {
                 }
                 self.cursor_row = target_pos.0;
                 self.cursor_col = target_pos.1;
+                if self.cursor_row != prev_row {
+                    self.clear_line_undo();
+                }
                 return true;
             }
             if row == 0 || !self.find_cross_line {
@@ -336,8 +469,10 @@ impl App {
     }
 
     fn delete_range(&mut self, start: (usize, usize), end: (usize, usize)) {
+        self.record_undo();
         let (start, end) = normalize_range(start, end);
         if start.0 == end.0 {
+            self.set_line_undo(start.0);
             let row = start.0;
             let line = &mut self.lines[row];
             let len = line.chars().count();
@@ -353,6 +488,7 @@ impl App {
             };
             line.replace_range(start_idx..end_idx, "");
         } else {
+            self.clear_line_undo();
             let start_line = &self.lines[start.0];
             let start_prefix = &start_line[..char_to_byte_idx(start_line, start.1)];
 
@@ -421,6 +557,8 @@ impl App {
     }
 
     fn delete_lines(&mut self, start_row: usize, end_row: usize) {
+        self.record_undo();
+        self.clear_line_undo();
         if self.lines.is_empty() {
             return;
         }
@@ -455,6 +593,8 @@ impl App {
     }
 
     fn delete_block(&mut self, start: (usize, usize), end: (usize, usize)) {
+        self.record_undo();
+        self.clear_line_undo();
         let (start, end) = normalize_range(start, end);
         for row in start.0..=end.0 {
             if row >= self.lines.len() {
@@ -511,6 +651,8 @@ impl App {
     }
 
     fn delete_line(&mut self, row: usize) {
+        self.record_undo();
+        self.clear_line_undo();
         if self.lines.is_empty() {
             return;
         }
@@ -530,11 +672,13 @@ impl App {
     }
 
     fn paste_after(&mut self) {
+        self.record_undo();
         if self.yank_buffer.is_empty() {
             return;
         }
         match self.yank_type {
             YankType::Line => {
+                self.clear_line_undo();
                 let insert_at = (self.cursor_row + 1).min(self.lines.len());
                 let lines: Vec<String> =
                     self.yank_buffer.split('\n').map(|s| s.to_string()).collect();
@@ -543,9 +687,11 @@ impl App {
                 self.cursor_col = 0;
             }
             YankType::Block => {
+                self.clear_line_undo();
                 self.paste_block_at(self.cursor_row, self.cursor_col);
             }
             YankType::Char => {
+                self.set_line_undo(self.cursor_row);
                 let line = &mut self.lines[self.cursor_row];
                 let byte_idx = char_to_byte_idx(line, self.cursor_col + 1);
                 line.insert_str(byte_idx, &self.yank_buffer);
@@ -556,11 +702,13 @@ impl App {
     }
 
     fn paste_before(&mut self) {
+        self.record_undo();
         if self.yank_buffer.is_empty() {
             return;
         }
         match self.yank_type {
             YankType::Line => {
+                self.clear_line_undo();
                 let insert_at = self.cursor_row.min(self.lines.len());
                 let lines: Vec<String> =
                     self.yank_buffer.split('\n').map(|s| s.to_string()).collect();
@@ -569,9 +717,11 @@ impl App {
                 self.cursor_col = 0;
             }
             YankType::Block => {
+                self.clear_line_undo();
                 self.paste_block_at(self.cursor_row, self.cursor_col);
             }
             YankType::Char => {
+                self.set_line_undo(self.cursor_row);
                 let line = &mut self.lines[self.cursor_row];
                 let byte_idx = char_to_byte_idx(line, self.cursor_col);
                 line.insert_str(byte_idx, &self.yank_buffer);
@@ -867,6 +1017,7 @@ impl App {
     }
 
     fn insert_char(&mut self, ch: char) {
+        self.record_undo();
         if let Some(block) = &mut self.block_insert {
             for row in block.start_row..=block.end_row {
                 if row >= self.lines.len() {
@@ -890,6 +1041,7 @@ impl App {
             self.dirty = true;
             return;
         }
+        self.set_line_undo(self.cursor_row);
         let line = &mut self.lines[self.cursor_row];
         let byte_idx = char_to_byte_idx(line, self.cursor_col);
         line.insert(byte_idx, ch);
@@ -898,10 +1050,12 @@ impl App {
     }
 
     fn insert_newline(&mut self) {
+        self.record_undo();
         if self.block_insert.is_some() {
             self.block_insert_newline();
             return;
         }
+        self.clear_line_undo();
         let line = &mut self.lines[self.cursor_row];
         let byte_idx = char_to_byte_idx(line, self.cursor_col);
         let right = line.split_off(byte_idx);
@@ -912,6 +1066,7 @@ impl App {
     }
 
     fn backspace(&mut self) {
+        self.record_undo();
         if let Some(block) = &mut self.block_insert {
             if block.col == 0 {
                 return;
@@ -936,6 +1091,7 @@ impl App {
             return;
         }
         if self.cursor_col > 0 {
+            self.set_line_undo(self.cursor_row);
             let line = &mut self.lines[self.cursor_row];
             let byte_idx = char_to_byte_idx(line, self.cursor_col);
             let prev_idx = char_to_byte_idx(line, self.cursor_col - 1);
@@ -943,6 +1099,7 @@ impl App {
             self.cursor_col -= 1;
             self.dirty = true;
         } else if self.cursor_row > 0 {
+            self.clear_line_undo();
             let current = self.lines.remove(self.cursor_row);
             self.cursor_row -= 1;
             let prev_line = &mut self.lines[self.cursor_row];
@@ -982,17 +1139,20 @@ impl App {
     }
 
     fn delete_at_cursor(&mut self) {
+        self.record_undo();
         if self.block_insert.is_some() {
             return;
         }
         let len = self.line_len(self.cursor_row);
         if self.cursor_col < len {
+            self.set_line_undo(self.cursor_row);
             let line = &mut self.lines[self.cursor_row];
             let byte_idx = char_to_byte_idx(line, self.cursor_col);
             let next_idx = char_to_byte_idx(line, self.cursor_col + 1);
             line.replace_range(byte_idx..next_idx, "");
             self.dirty = true;
         } else if self.cursor_row + 1 < self.lines.len() {
+            self.clear_line_undo();
             let next = self.lines.remove(self.cursor_row + 1);
             let line = &mut self.lines[self.cursor_row];
             line.push_str(&next);
@@ -1001,6 +1161,8 @@ impl App {
     }
 
     fn open_line_below(&mut self) {
+        self.record_undo();
+        self.clear_line_undo();
         self.lines.insert(self.cursor_row + 1, String::new());
         self.cursor_row += 1;
         self.cursor_col = 0;
@@ -1008,6 +1170,8 @@ impl App {
     }
 
     fn open_line_above(&mut self) {
+        self.record_undo();
+        self.clear_line_undo();
         self.lines.insert(self.cursor_row, String::new());
         self.cursor_col = 0;
         self.dirty = true;
@@ -1186,6 +1350,11 @@ fn char_class(ch: char) -> CharClass {
     }
 }
 
+fn is_undo_break_char(ch: char) -> bool {
+    ch.is_whitespace()
+        || matches!(ch, '.' | ',' | ';' | ':' | '!' | '?' | '(' | ')' | '[' | ']' | '{' | '}')
+}
+
 #[derive(Debug, Clone, Copy)]
 struct FindPending {
     until: bool,
@@ -1206,12 +1375,28 @@ enum VisualSelection {
     Block { start: (usize, usize), end: (usize, usize) },
 }
 
+#[derive(Debug, Clone)]
+struct EditorState {
+    lines: Vec<String>,
+    cursor_row: usize,
+    cursor_col: usize,
+    scroll_row: usize,
+    scroll_col: usize,
+    dirty: bool,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct BlockInsert {
     start_row: usize,
     end_row: usize,
     col: usize,
     append: bool,
+}
+
+#[derive(Debug, Clone)]
+struct LineUndo {
+    row: usize,
+    line: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1322,6 +1507,18 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
 
     match app.mode {
         Mode::Normal => match (key.code, key.modifiers) {
+            (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
+                app.redo();
+            }
+            (KeyCode::Char('z'), KeyModifiers::CONTROL) => {
+                app.undo();
+            }
+            (KeyCode::Char('u'), KeyModifiers::NONE) => {
+                app.undo();
+            }
+            (KeyCode::Char('U'), _) => {
+                app.undo_line();
+            }
             (KeyCode::Char('q'), KeyModifiers::CONTROL) => {
                 if app.dirty && !app.quit_confirm {
                     app.quit_confirm = true;
@@ -1336,6 +1533,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Char('i'), KeyModifiers::NONE) => {
                 app.mode = Mode::Insert;
                 app.operator_pending = None;
+                app.insert_undo_snapshot = false;
                 app.set_status("-- INSERT --");
             }
             (KeyCode::Char('v'), KeyModifiers::NONE) => {
@@ -1411,6 +1609,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                     if op.op == Operator::Change {
                         app.delete_line(app.cursor_row);
                         app.mode = Mode::Insert;
+                        app.insert_undo_snapshot = false;
                         app.set_status("-- INSERT --");
                         return Ok(false);
                     }
@@ -1512,10 +1711,12 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Char('o'), KeyModifiers::NONE) => {
                 app.open_line_below();
                 app.mode = Mode::Insert;
+                app.insert_undo_snapshot = false;
             }
             (KeyCode::Char('O'), _) => {
                 app.open_line_above();
                 app.mode = Mode::Insert;
+                app.insert_undo_snapshot = false;
             }
             _ => {}
         },
@@ -1528,28 +1729,67 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 }
                 return Ok(true);
             }
+            (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
+                app.redo();
+            }
+            (KeyCode::Char('z'), KeyModifiers::CONTROL) => {
+                app.undo();
+            }
             (KeyCode::Esc, _) => {
                 app.mode = Mode::Normal;
                 app.block_insert = None;
+                app.insert_undo_snapshot = false;
                 app.set_status("-- NORMAL --");
             }
             (KeyCode::Char('s'), KeyModifiers::CONTROL) => {
                 app.save()?;
             }
-            (KeyCode::Enter, _) => app.insert_newline(),
-            (KeyCode::Backspace, _) => app.backspace(),
-            (KeyCode::Delete, _) => app.delete_at_cursor(),
+            (KeyCode::Enter, _) => {
+                app.insert_undo_snapshot = false;
+                app.insert_newline()
+            }
+            (KeyCode::Backspace, _) => {
+                app.insert_undo_snapshot = false;
+                app.backspace()
+            }
+            (KeyCode::Delete, _) => {
+                app.insert_undo_snapshot = false;
+                app.delete_at_cursor()
+            }
             (KeyCode::Tab, _) => {
+                app.insert_undo_snapshot = false;
                 for _ in 0..4 {
                     app.insert_char(' ');
                 }
             }
-            (KeyCode::Char(ch), KeyModifiers::NONE) => app.insert_char(ch),
-            (KeyCode::Char(ch), KeyModifiers::SHIFT) => app.insert_char(ch),
-            (KeyCode::Left, _) => app.move_left(),
-            (KeyCode::Right, _) => app.move_right(),
-            (KeyCode::Up, _) => app.move_up(),
-            (KeyCode::Down, _) => app.move_down(),
+            (KeyCode::Char(ch), KeyModifiers::NONE) => {
+                if is_undo_break_char(ch) {
+                    app.insert_undo_snapshot = false;
+                }
+                app.insert_char(ch)
+            }
+            (KeyCode::Char(ch), KeyModifiers::SHIFT) => {
+                if is_undo_break_char(ch) {
+                    app.insert_undo_snapshot = false;
+                }
+                app.insert_char(ch)
+            }
+            (KeyCode::Left, _) => {
+                app.insert_undo_snapshot = false;
+                app.move_left()
+            }
+            (KeyCode::Right, _) => {
+                app.insert_undo_snapshot = false;
+                app.move_right()
+            }
+            (KeyCode::Up, _) => {
+                app.insert_undo_snapshot = false;
+                app.move_up()
+            }
+            (KeyCode::Down, _) => {
+                app.insert_undo_snapshot = false;
+                app.move_down()
+            }
             _ => {}
         },
         Mode::Command => match (key.code, key.modifiers) {
@@ -1633,6 +1873,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                     app.last_visual = Some(selection_to_last_visual(selection, app.mode));
                 }
                 app.mode = Mode::Insert;
+                app.insert_undo_snapshot = false;
                 app.visual_start = None;
                 app.set_status("-- INSERT --");
             }
@@ -1677,6 +1918,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                         app.cursor_row = start.0;
                         app.cursor_col = start.1;
                         app.mode = Mode::Insert;
+                        app.insert_undo_snapshot = false;
                         app.visual_start = None;
                         app.set_status("-- INSERT --");
                     }
@@ -1694,6 +1936,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                         app.cursor_row = start.0;
                         app.cursor_col = end.1 + 1;
                         app.mode = Mode::Insert;
+                        app.insert_undo_snapshot = false;
                         app.visual_start = None;
                         app.set_status("-- INSERT --");
                     }
@@ -1859,6 +2102,11 @@ fn ui(f: &mut Frame<'_>, app: &mut App) {
         app.cursor_row + 1,
         app.cursor_col + 1
     );
+    status.push_str(&format!(
+        " | undo:{} redo:{}",
+        app.undo_stack.len(),
+        app.redo_stack.len()
+    ));
     if matches!(app.mode, Mode::VisualChar | Mode::VisualLine | Mode::VisualBlock) {
         if let Some(summary) = app.selection_summary() {
             status.push_str(" | ");

@@ -18,6 +18,20 @@ enum Mode {
     Command,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Operator {
+    Delete,
+    Yank,
+    Change,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct OperatorPending {
+    op: Operator,
+    start_row: usize,
+    start_col: usize,
+}
+
 struct App {
     lines: Vec<String>,
     cursor_row: usize,
@@ -34,6 +48,9 @@ struct App {
     pending_g: bool,
     pending_find: Option<FindPending>,
     last_find: Option<FindSpec>,
+    operator_pending: Option<OperatorPending>,
+    yank_buffer: String,
+    find_cross_line: bool,
 }
 
 impl App {
@@ -58,6 +75,9 @@ impl App {
             pending_g: false,
             pending_find: None,
             last_find: None,
+            operator_pending: None,
+            yank_buffer: String::new(),
+            find_cross_line: true,
         }
     }
 
@@ -250,6 +270,9 @@ impl App {
                     return true;
                 }
             }
+            if !self.find_cross_line {
+                break;
+            }
             row += 1;
             col = 0;
         }
@@ -285,13 +308,122 @@ impl App {
                 self.cursor_col = target_pos.1;
                 return true;
             }
-            if row == 0 {
+            if row == 0 || !self.find_cross_line {
                 break;
             }
             row -= 1;
             col = self.line_len(row);
         }
         false
+    }
+
+    fn delete_range(&mut self, start: (usize, usize), end: (usize, usize)) {
+        let (start, end) = normalize_range(start, end);
+        if start.0 == end.0 {
+            let row = start.0;
+            let line = &mut self.lines[row];
+            let len = line.chars().count();
+            if len == 0 {
+                return;
+            }
+            let start_idx = char_to_byte_idx(line, start.1);
+            let end_col = end.1.min(len.saturating_sub(1));
+            let end_idx = if end_col + 1 <= len {
+                char_to_byte_idx(line, end_col + 1)
+            } else {
+                line.len()
+            };
+            line.replace_range(start_idx..end_idx, "");
+        } else {
+            let start_line = &self.lines[start.0];
+            let start_prefix = &start_line[..char_to_byte_idx(start_line, start.1)];
+
+            let end_line = &self.lines[end.0];
+            let end_len = end_line.chars().count();
+            let end_col = end.1.min(end_len.saturating_sub(1));
+            let end_suffix = if end_len == 0 {
+                ""
+            } else {
+                &end_line[char_to_byte_idx(end_line, end_col + 1)..]
+            };
+
+            let merged = format!("{}{}", start_prefix, end_suffix);
+            self.lines[start.0] = merged;
+            self.lines.drain(start.0 + 1..=end.0);
+        }
+
+        if self.lines.is_empty() {
+            self.lines.push(String::new());
+        }
+        self.cursor_row = start.0.min(self.lines.len() - 1);
+        let len = self.line_len(self.cursor_row);
+        self.cursor_col = start.1.min(len);
+        self.dirty = true;
+    }
+
+    fn yank_range(&mut self, start: (usize, usize), end: (usize, usize)) {
+        let (start, end) = normalize_range(start, end);
+        let mut out = String::new();
+        if start.0 == end.0 {
+            let line = &self.lines[start.0];
+            let len = line.chars().count();
+            if len == 0 {
+                self.yank_buffer.clear();
+                return;
+            }
+            let start_idx = char_to_byte_idx(line, start.1);
+            let end_col = end.1.min(len.saturating_sub(1));
+            let end_idx = if end_col + 1 <= len {
+                char_to_byte_idx(line, end_col + 1)
+            } else {
+                line.len()
+            };
+            out.push_str(&line[start_idx..end_idx]);
+        } else {
+            let start_line = &self.lines[start.0];
+            out.push_str(&start_line[char_to_byte_idx(start_line, start.1)..]);
+            out.push('\n');
+            for row in (start.0 + 1)..end.0 {
+                out.push_str(&self.lines[row]);
+                out.push('\n');
+            }
+            let end_line = &self.lines[end.0];
+            let end_len = end_line.chars().count();
+            let end_col = end.1.min(end_len.saturating_sub(1));
+            let end_idx = if end_len == 0 {
+                0
+            } else {
+                char_to_byte_idx(end_line, end_col + 1)
+            };
+            out.push_str(&end_line[..end_idx]);
+        }
+        self.yank_buffer = out;
+    }
+
+    fn delete_line(&mut self, row: usize) {
+        if self.lines.is_empty() {
+            return;
+        }
+        self.lines.remove(row.min(self.lines.len() - 1));
+        if self.lines.is_empty() {
+            self.lines.push(String::new());
+        }
+        self.cursor_row = row.min(self.lines.len() - 1);
+        self.cursor_col = 0;
+        self.dirty = true;
+    }
+
+    fn yank_line(&mut self, row: usize) {
+        let row = row.min(self.lines.len().saturating_sub(1));
+        self.yank_buffer = self.lines.get(row).cloned().unwrap_or_default();
+    }
+
+    fn apply_operator(&mut self, op: Operator, start: (usize, usize), end: (usize, usize)) {
+        match op {
+            Operator::Delete => self.delete_range(start, end),
+            Operator::Yank => self.yank_range(start, end),
+            Operator::Change => self.delete_range(start, end),
+        }
     }
 
     fn next_word_start(&self, row: usize, col: usize) -> Option<(usize, usize)> {
@@ -649,6 +781,27 @@ impl App {
                     self.set_status("Usage: :e <path>");
                 }
             }
+            "set" => {
+                if let Some(setting) = arg {
+                    match setting {
+                        "findcross" => {
+                            self.find_cross_line = true;
+                            self.set_status("findcross");
+                        }
+                        "nofindcross" => {
+                            self.find_cross_line = false;
+                            self.set_status("nofindcross");
+                        }
+                        "findcross?" => {
+                            let value = if self.find_cross_line { "findcross" } else { "nofindcross" };
+                            self.set_status(value);
+                        }
+                        _ => self.set_status("Unknown option"),
+                    }
+                } else {
+                    self.set_status("Usage: :set findcross|nofindcross|findcross?");
+                }
+            }
             _ => {
                 self.set_status(format!("Not an editor command: {}", cmd));
             }
@@ -680,6 +833,18 @@ fn char_to_byte_idx(s: &str, char_idx: usize) -> usize {
         .nth(char_idx)
         .map(|(i, _)| i)
         .unwrap_or_else(|| s.len())
+}
+
+fn normalize_range(a: (usize, usize), b: (usize, usize)) -> ((usize, usize), (usize, usize)) {
+    if pos_le(a, b) {
+        (a, b)
+    } else {
+        (b, a)
+    }
+}
+
+fn pos_le(a: (usize, usize), b: (usize, usize)) -> bool {
+    a.0 < b.0 || (a.0 == b.0 && a.1 <= b.1)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -789,6 +954,17 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                     });
                 }
             }
+            if let Some(op) = app.operator_pending.take() {
+                app.apply_operator(
+                    op.op,
+                    (op.start_row, op.start_col),
+                    (app.cursor_row, app.cursor_col),
+                );
+                if op.op == Operator::Change {
+                    app.mode = Mode::Insert;
+                    app.set_status("-- INSERT --");
+                }
+            }
             return Ok(false);
         }
     }
@@ -808,11 +984,54 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             }
             (KeyCode::Char('i'), KeyModifiers::NONE) => {
                 app.mode = Mode::Insert;
+                app.operator_pending = None;
                 app.set_status("-- INSERT --");
             }
             (KeyCode::Char(':'), KeyModifiers::NONE) => {
                 app.mode = Mode::Command;
                 app.command_buffer.clear();
+                app.operator_pending = None;
+            }
+            (KeyCode::Char('d'), KeyModifiers::NONE) => {
+                if let Some(op) = app.operator_pending.take() {
+                    if op.op == Operator::Delete {
+                        app.delete_line(app.cursor_row);
+                        return Ok(false);
+                    }
+                }
+                app.operator_pending = Some(OperatorPending {
+                    op: Operator::Delete,
+                    start_row: app.cursor_row,
+                    start_col: app.cursor_col,
+                });
+            }
+            (KeyCode::Char('y'), KeyModifiers::NONE) => {
+                if let Some(op) = app.operator_pending.take() {
+                    if op.op == Operator::Yank {
+                        app.yank_line(app.cursor_row);
+                        return Ok(false);
+                    }
+                }
+                app.operator_pending = Some(OperatorPending {
+                    op: Operator::Yank,
+                    start_row: app.cursor_row,
+                    start_col: app.cursor_col,
+                });
+            }
+            (KeyCode::Char('c'), KeyModifiers::NONE) => {
+                if let Some(op) = app.operator_pending.take() {
+                    if op.op == Operator::Change {
+                        app.delete_line(app.cursor_row);
+                        app.mode = Mode::Insert;
+                        app.set_status("-- INSERT --");
+                        return Ok(false);
+                    }
+                }
+                app.operator_pending = Some(OperatorPending {
+                    op: Operator::Change,
+                    start_row: app.cursor_row,
+                    start_col: app.cursor_col,
+                });
             }
             (KeyCode::Char('h'), KeyModifiers::NONE) | (KeyCode::Left, _) => app.move_left(),
             (KeyCode::Char('j'), KeyModifiers::NONE) | (KeyCode::Down, _) => app.move_down(),
@@ -962,6 +1181,21 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             }
             _ => {}
         },
+    }
+
+    if app.mode == Mode::Normal {
+        if let Some(op) = app.operator_pending.take() {
+            let end = (app.cursor_row, app.cursor_col);
+            if (op.start_row, op.start_col) != end {
+                app.apply_operator(op.op, (op.start_row, op.start_col), end);
+                if op.op == Operator::Change {
+                    app.mode = Mode::Insert;
+                    app.set_status("-- INSERT --");
+                }
+            } else {
+                app.operator_pending = Some(op);
+            }
+        }
     }
 
     Ok(false)

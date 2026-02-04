@@ -85,10 +85,12 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
         .unwrap_or_else(|| "[No Name]".to_string());
     let dirty = if app.dirty { " [+]" } else { "" };
     let mut status = format!(
-        "{} | {}{} | {}:{}",
+        "{} | {}{} | buf:{}/{} | {}:{}",
         mode_label,
         file_label,
         dirty,
+        app.current_buffer_id,
+        app.buffer_count(),
         app.cursor_row + 1,
         app.cursor_col + 1
     );

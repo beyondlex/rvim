@@ -63,7 +63,120 @@ impl App {
             repeat_buffer: Vec::new(),
             last_change: Vec::new(),
             change_tick: 0,
+            buffers: Vec::new(),
+            current_buffer_id: 1,
+            next_buffer_id: 2,
         }
+    }
+
+    pub fn buffer_count(&self) -> usize {
+        1 + self.buffers.len()
+    }
+
+    pub fn buffer_display_name(path: &Option<std::path::PathBuf>) -> String {
+        path.as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "[No Name]".to_string())
+    }
+
+    pub fn list_buffers(&self) -> String {
+        let mut entries: Vec<(usize, bool, bool, String)> = Vec::with_capacity(self.buffers.len() + 1);
+        entries.push((
+            self.current_buffer_id,
+            true,
+            self.dirty,
+            Self::buffer_display_name(&self.file_path),
+        ));
+        for slot in &self.buffers {
+            entries.push((
+                slot.id,
+                false,
+                slot.state.dirty,
+                Self::buffer_display_name(&slot.state.file_path),
+            ));
+        }
+        entries.sort_by_key(|(id, _, _, _)| *id);
+        let parts: Vec<String> = entries
+            .into_iter()
+            .map(|(id, current, dirty, name)| {
+                let mut tag = String::new();
+                if current {
+                    tag.push('%');
+                }
+                if dirty {
+                    tag.push('+');
+                }
+                if tag.is_empty() {
+                    format!("{} {}", id, name)
+                } else {
+                    format!("{}{} {}", id, tag, name)
+                }
+            })
+            .collect();
+        parts.join(" | ")
+    }
+
+    pub fn capture_buffer_state(&self) -> super::types::BufferState {
+        super::types::BufferState {
+            lines: self.lines.clone(),
+            cursor_row: self.cursor_row,
+            cursor_col: self.cursor_col,
+            scroll_row: self.scroll_row,
+            scroll_col: self.scroll_col,
+            file_path: self.file_path.clone(),
+            dirty: self.dirty,
+            undo_stack: self.undo_stack.clone(),
+            redo_stack: self.redo_stack.clone(),
+            line_undo: self.line_undo.clone(),
+            is_restoring: self.is_restoring,
+            change_tick: self.change_tick,
+        }
+    }
+
+    pub fn load_buffer_state(&mut self, state: super::types::BufferState) {
+        self.lines = state.lines;
+        if self.lines.is_empty() {
+            self.lines.push(String::new());
+        }
+        self.cursor_row = state.cursor_row.min(self.lines.len().saturating_sub(1));
+        let current_line_len = self
+            .lines
+            .get(self.cursor_row)
+            .map(|line| line.chars().count())
+            .unwrap_or(0);
+        self.cursor_col = state.cursor_col.min(current_line_len);
+        self.scroll_row = state
+            .scroll_row
+            .min(self.lines.len().saturating_sub(1));
+        self.scroll_col = state.scroll_col;
+        self.file_path = state.file_path;
+        self.dirty = state.dirty;
+        self.undo_stack = state.undo_stack;
+        self.redo_stack = state.redo_stack;
+        self.line_undo = state.line_undo;
+        self.is_restoring = state.is_restoring;
+        self.change_tick = state.change_tick;
+    }
+
+    pub fn reset_transient_for_switch(&mut self) {
+        self.mode = Mode::Normal;
+        self.command_prompt = CommandPrompt::Command;
+        self.command_buffer.clear();
+        self.search_history_index = None;
+        self.pending_count = None;
+        self.visual_start = None;
+        self.block_insert = None;
+        self.last_visual = None;
+        self.insert_undo_snapshot = false;
+        self.pending_find = None;
+        self.pending_g = false;
+        self.operator_pending = None;
+        self.last_find = None;
+        self.pending_textobj = None;
+        self.repeat_recording = false;
+        self.repeat_replaying = false;
+        self.repeat_changed = false;
+        self.repeat_buffer.clear();
     }
 
     pub fn apply_config(&mut self, config: &super::config::Config) {

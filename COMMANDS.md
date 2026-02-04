@@ -12,7 +12,16 @@ Enter command mode with `:` then press Enter to execute.
 - `:q` / `:quit` — quit (fails if dirty)
 - `:q!` / `:quit!` — quit without saving
 - `:wq` / `:x` — save and quit (use `:wq <path>` if no file name)
-- `:e <path>` / `:edit <path>` — open file
+- `:e <path>` / `:edit <path>` — open file (new buffer if not already open)
+
+### Buffers
+
+- `:ls` / `:buffers` — list buffers (id + dirty state)
+- `:b <id>` / `:buffer <id>` — switch to buffer
+- `:bn` / `:bnext` — next buffer
+- `:bp` / `:bprev` — previous buffer
+- `:bd [id]` / `:bdelete [id]` — close buffer (current if no id)
+- `:bd! [id]` / `:bdelete! [id]` — force close dirty buffer
 
 ### Options (`:set`)
 

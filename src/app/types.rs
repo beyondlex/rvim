@@ -91,6 +91,9 @@ pub struct App {
     pub(crate) repeat_buffer: Vec<RepeatKey>,
     pub(crate) last_change: Vec<RepeatKey>,
     pub(crate) change_tick: u64,
+    pub(crate) buffers: Vec<BufferSlot>,
+    pub(crate) current_buffer_id: usize,
+    pub(crate) next_buffer_id: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -113,6 +116,28 @@ pub(super) struct EditorState {
     pub(super) scroll_row: usize,
     pub(super) scroll_col: usize,
     pub(super) dirty: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct BufferState {
+    pub(crate) lines: Vec<String>,
+    pub(crate) cursor_row: usize,
+    pub(crate) cursor_col: usize,
+    pub(crate) scroll_row: usize,
+    pub(crate) scroll_col: usize,
+    pub(crate) file_path: Option<PathBuf>,
+    pub(crate) dirty: bool,
+    pub(crate) undo_stack: Vec<EditorState>,
+    pub(crate) redo_stack: Vec<EditorState>,
+    pub(crate) line_undo: Option<LineUndo>,
+    pub(crate) is_restoring: bool,
+    pub(crate) change_tick: u64,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct BufferSlot {
+    pub(crate) id: usize,
+    pub(crate) state: BufferState,
 }
 
 #[derive(Debug, Clone, Copy)]

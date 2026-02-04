@@ -3,11 +3,187 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
-use super::types::{CommandPrompt, SearchSpec};
+use super::types::{BufferSlot, BufferState, CommandPrompt, SearchSpec};
 use super::App;
 use super::Theme;
 
 impl App {
+    fn find_buffer_id_by_path(&self, path: &PathBuf) -> Option<usize> {
+        for slot in &self.buffers {
+            if slot.state.file_path.as_ref() == Some(path) {
+                return Some(slot.id);
+            }
+        }
+        None
+    }
+
+    fn sorted_buffer_ids(&self) -> Vec<usize> {
+        let mut ids = Vec::with_capacity(self.buffers.len() + 1);
+        ids.push(self.current_buffer_id);
+        for slot in &self.buffers {
+            ids.push(slot.id);
+        }
+        ids.sort();
+        ids
+    }
+
+    fn switch_to_buffer(&mut self, id: usize) -> bool {
+        if id == self.current_buffer_id {
+            return true;
+        }
+        let idx = match self.buffers.iter().position(|slot| slot.id == id) {
+            Some(idx) => idx,
+            None => {
+                self.set_status("No such buffer");
+                return false;
+            }
+        };
+        let target = self.buffers.swap_remove(idx);
+        let current_state = self.capture_buffer_state();
+        let current_id = self.current_buffer_id;
+        self.buffers.push(BufferSlot {
+            id: current_id,
+            state: current_state,
+        });
+        self.load_buffer_state(target.state);
+        self.current_buffer_id = target.id;
+        self.reset_transient_for_switch();
+        true
+    }
+
+    fn switch_next_buffer(&mut self) {
+        let ids = self.sorted_buffer_ids();
+        if ids.len() <= 1 {
+            self.set_status("No other buffers");
+            return;
+        }
+        let idx = ids
+            .iter()
+            .position(|id| *id == self.current_buffer_id)
+            .unwrap_or(0);
+        let next_id = ids[(idx + 1) % ids.len()];
+        if self.switch_to_buffer(next_id) {
+            self.set_status(format!("Buffer {}", next_id));
+        }
+    }
+
+    fn switch_prev_buffer(&mut self) {
+        let ids = self.sorted_buffer_ids();
+        if ids.len() <= 1 {
+            self.set_status("No other buffers");
+            return;
+        }
+        let idx = ids
+            .iter()
+            .position(|id| *id == self.current_buffer_id)
+            .unwrap_or(0);
+        let prev_id = if idx == 0 { ids[ids.len() - 1] } else { ids[idx - 1] };
+        if self.switch_to_buffer(prev_id) {
+            self.set_status(format!("Buffer {}", prev_id));
+        }
+    }
+
+    fn open_or_switch_buffer(&mut self, path: PathBuf) -> Result<()> {
+        if self.file_path.as_ref() == Some(&path) {
+            self.reload(&path)?;
+            self.set_status(format!("Opened {}", path.display()));
+            return Ok(());
+        }
+        if let Some(id) = self.find_buffer_id_by_path(&path) {
+            if self.switch_to_buffer(id) {
+                self.set_status(format!("Buffer {}", id));
+            }
+            return Ok(());
+        }
+        let content = fs::read_to_string(&path).unwrap_or_default();
+        let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+        if lines.is_empty() {
+            lines.push(String::new());
+        }
+        let new_state = BufferState {
+            lines,
+            cursor_row: 0,
+            cursor_col: 0,
+            scroll_row: 0,
+            scroll_col: 0,
+            file_path: Some(path.clone()),
+            dirty: false,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            line_undo: None,
+            is_restoring: false,
+            change_tick: 0,
+        };
+        let current_state = self.capture_buffer_state();
+        let current_id = self.current_buffer_id;
+        self.buffers.push(BufferSlot {
+            id: current_id,
+            state: current_state,
+        });
+        self.load_buffer_state(new_state);
+        self.current_buffer_id = self.next_buffer_id;
+        self.next_buffer_id += 1;
+        self.reset_transient_for_switch();
+        self.set_status(format!("Opened {}", path.display()));
+        Ok(())
+    }
+
+    fn close_buffer(&mut self, id: Option<usize>, force: bool) {
+        let target_id = id.unwrap_or(self.current_buffer_id);
+        if target_id == self.current_buffer_id {
+            if self.dirty && !force {
+                self.set_status("No write since last change (add ! to override)");
+                return;
+            }
+            if self.buffers.is_empty() {
+                self.lines = vec![String::new()];
+                self.cursor_row = 0;
+                self.cursor_col = 0;
+                self.scroll_row = 0;
+                self.scroll_col = 0;
+                self.file_path = None;
+                self.dirty = false;
+                self.undo_stack.clear();
+                self.redo_stack.clear();
+                self.line_undo = None;
+                self.is_restoring = false;
+                self.change_tick = 0;
+                self.reset_transient_for_switch();
+                self.set_status("Closed buffer (new empty)");
+                return;
+            }
+            let ids = self.sorted_buffer_ids();
+            let replacement_id = ids
+                .into_iter()
+                .find(|id| *id != self.current_buffer_id)
+                .unwrap();
+            let idx = self
+                .buffers
+                .iter()
+                .position(|slot| slot.id == replacement_id)
+                .unwrap();
+            let replacement = self.buffers.swap_remove(idx);
+            self.load_buffer_state(replacement.state);
+            self.current_buffer_id = replacement.id;
+            self.reset_transient_for_switch();
+            self.set_status(format!("Closed buffer {}, now {}", target_id, replacement_id));
+            return;
+        }
+        let idx = match self.buffers.iter().position(|slot| slot.id == target_id) {
+            Some(idx) => idx,
+            None => {
+                self.set_status("No such buffer");
+                return;
+            }
+        };
+        if self.buffers[idx].state.dirty && !force {
+            self.set_status("No write since last change (add ! to override)");
+            return;
+        }
+        self.buffers.swap_remove(idx);
+        self.set_status(format!("Closed buffer {}", target_id));
+    }
+
     pub(super) fn save(&mut self) -> Result<()> {
         let Some(path) = self.file_path.clone() else {
             self.set_status("No file name (open with a path)");
@@ -80,11 +256,53 @@ impl App {
             }
             "e" | "edit" => {
                 if let Some(path) = arg.map(PathBuf::from) {
-                    self.file_path = Some(path.clone());
-                    self.reload(&path)?;
-                    self.set_status(format!("Opened {}", path.display()));
+                    self.open_or_switch_buffer(path)?;
                 } else {
                     self.set_status("Usage: :e <path>");
+                }
+            }
+            "ls" | "buffers" => {
+                self.set_status(self.list_buffers());
+            }
+            "b" | "buffer" => {
+                if let Some(arg) = arg.as_deref() {
+                    if let Ok(id) = arg.parse::<usize>() {
+                        if self.switch_to_buffer(id) {
+                            self.set_status(format!("Buffer {}", id));
+                        }
+                    } else {
+                        self.set_status("Usage: :b <id>");
+                    }
+                } else {
+                    self.set_status(self.list_buffers());
+                }
+            }
+            "bn" | "bnext" => {
+                self.switch_next_buffer();
+            }
+            "bp" | "bprev" => {
+                self.switch_prev_buffer();
+            }
+            "bd" | "bdelete" => {
+                if let Some(arg) = arg.as_deref() {
+                    if let Ok(id) = arg.parse::<usize>() {
+                        self.close_buffer(Some(id), false);
+                    } else {
+                        self.set_status("Usage: :bd <id>");
+                    }
+                } else {
+                    self.close_buffer(None, false);
+                }
+            }
+            "bd!" | "bdelete!" => {
+                if let Some(arg) = arg.as_deref() {
+                    if let Ok(id) = arg.parse::<usize>() {
+                        self.close_buffer(Some(id), true);
+                    } else {
+                        self.set_status("Usage: :bd! <id>");
+                    }
+                } else {
+                    self.close_buffer(None, true);
                 }
             }
             "set" => {

@@ -4,8 +4,9 @@ use super::motion::char_count_in_range;
 use crossterm::event::{KeyCode, KeyModifiers};
 
 use super::types::{
-    char_class, char_to_byte_idx, normalize_range, CharClass, EditorState, LastVisual, LineUndo,
-    Mode, Operator, OperatorPending, RepeatKey, VisualSelection, VisualSelectionKind, YankType,
+    char_class, char_to_byte_idx, normalize_range, CharClass, CommandPrompt, EditorState,
+    LastVisual, LineUndo, Mode, Operator, OperatorPending, RepeatKey, VisualSelection,
+    VisualSelectionKind, YankType,
 };
 use super::App;
 
@@ -47,6 +48,8 @@ impl App {
             undo_limit: 200,
             line_undo: None,
             is_restoring: false,
+            command_prompt: CommandPrompt::Command,
+            last_search: None,
             repeat_recording: false,
             repeat_replaying: false,
             repeat_changed: false,

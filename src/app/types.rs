@@ -14,6 +14,13 @@ pub enum Mode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandPrompt {
+    Command,
+    SearchForward,
+    SearchBackward,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Operator {
     Delete,
     Yank,
@@ -66,6 +73,8 @@ pub struct App {
     pub(crate) undo_limit: usize,
     pub(crate) line_undo: Option<LineUndo>,
     pub(crate) is_restoring: bool,
+    pub(crate) command_prompt: CommandPrompt,
+    pub(crate) last_search: Option<SearchSpec>,
     pub(crate) repeat_recording: bool,
     pub(crate) repeat_replaying: bool,
     pub(crate) repeat_changed: bool,
@@ -128,6 +137,12 @@ pub(super) struct FindSpec {
     pub(super) ch: char,
     pub(super) until: bool,
     pub(super) reverse: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SearchSpec {
+    pub(crate) pattern: String,
+    pub(crate) reverse: bool,
 }
 
 #[derive(Debug, Clone, Copy)]

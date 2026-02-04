@@ -3,8 +3,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::edit::selection_to_last_visual;
 use super::types::{
-    FindPending, FindSpec, Mode, Operator, OperatorPending, TextObjectKind, TextObjectPending,
-    RepeatKey, TextObjectTarget, VisualSelectionKind,
+    CommandPrompt, FindPending, FindSpec, Mode, Operator, OperatorPending, RepeatKey,
+    TextObjectKind, TextObjectPending, TextObjectTarget, VisualSelectionKind,
 };
 use super::{App, VisualSelection};
 
@@ -234,8 +234,21 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.operator_pending = None;
                 app.set_status("-- VISUAL BLOCK --");
             }
+            (KeyCode::Char('/'), KeyModifiers::NONE) => {
+                app.mode = Mode::Command;
+                app.command_prompt = CommandPrompt::SearchForward;
+                app.command_buffer.clear();
+                app.operator_pending = None;
+            }
+            (KeyCode::Char('?'), KeyModifiers::NONE) => {
+                app.mode = Mode::Command;
+                app.command_prompt = CommandPrompt::SearchBackward;
+                app.command_buffer.clear();
+                app.operator_pending = None;
+            }
             (KeyCode::Char(':'), KeyModifiers::NONE) => {
                 app.mode = Mode::Command;
+                app.command_prompt = CommandPrompt::Command;
                 app.command_buffer.clear();
                 app.operator_pending = None;
             }
@@ -350,6 +363,42 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 }
             }
             (KeyCode::Char('G'), _) => app.move_to_bottom(),
+            (KeyCode::Char('n'), KeyModifiers::NONE) => {
+                if let Some(spec) = app.last_search.clone() {
+                    let found = if spec.reverse {
+                        app.search_backward(&spec.pattern)
+                    } else {
+                        app.search_forward(&spec.pattern)
+                    };
+                    if !found {
+                        app.set_status(format!(
+                            "Pattern not found: {}{}",
+                            if spec.reverse { "?" } else { "/" },
+                            spec.pattern
+                        ));
+                    }
+                } else {
+                    app.set_status("No previous search");
+                }
+            }
+            (KeyCode::Char('N'), _) => {
+                if let Some(spec) = app.last_search.clone() {
+                    let found = if spec.reverse {
+                        app.search_forward(&spec.pattern)
+                    } else {
+                        app.search_backward(&spec.pattern)
+                    };
+                    if !found {
+                        app.set_status(format!(
+                            "Pattern not found: {}{}",
+                            if spec.reverse { "/" } else { "?" },
+                            spec.pattern
+                        ));
+                    }
+                } else {
+                    app.set_status("No previous search");
+                }
+            }
             (KeyCode::Char('f'), KeyModifiers::NONE) => {
                 app.pending_find = Some(FindPending {
                     until: false,
@@ -390,6 +439,42 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                     }
                 } else {
                     app.set_status("No previous find");
+                }
+            }
+            (KeyCode::Char('n'), KeyModifiers::NONE) => {
+                if let Some(spec) = app.last_search.clone() {
+                    let found = if spec.reverse {
+                        app.search_backward(&spec.pattern)
+                    } else {
+                        app.search_forward(&spec.pattern)
+                    };
+                    if !found {
+                        app.set_status(format!(
+                            "Pattern not found: {}{}",
+                            if spec.reverse { "?" } else { "/" },
+                            spec.pattern
+                        ));
+                    }
+                } else {
+                    app.set_status("No previous search");
+                }
+            }
+            (KeyCode::Char('N'), _) => {
+                if let Some(spec) = app.last_search.clone() {
+                    let found = if spec.reverse {
+                        app.search_forward(&spec.pattern)
+                    } else {
+                        app.search_backward(&spec.pattern)
+                    };
+                    if !found {
+                        app.set_status(format!(
+                            "Pattern not found: {}{}",
+                            if spec.reverse { "/" } else { "?" },
+                            spec.pattern
+                        ));
+                    }
+                } else {
+                    app.set_status("No previous search");
                 }
             }
             (KeyCode::Char(','), KeyModifiers::NONE) => {
@@ -493,11 +578,17 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Esc, _) => {
                 app.mode = Mode::Normal;
                 app.command_buffer.clear();
+                app.command_prompt = CommandPrompt::Command;
             }
             (KeyCode::Enter, _) => {
-                let should_quit = app.execute_command()?;
+                let should_quit = if matches!(app.command_prompt, CommandPrompt::Command) {
+                    app.execute_command()?
+                } else {
+                    app.execute_search()?
+                };
                 app.command_buffer.clear();
                 app.mode = Mode::Normal;
+                app.command_prompt = CommandPrompt::Command;
                 if should_quit {
                     return Ok(true);
                 }

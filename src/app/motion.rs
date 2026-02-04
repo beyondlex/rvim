@@ -471,6 +471,100 @@ impl App {
         }
         false
     }
+
+    pub(super) fn search_forward(&mut self, pattern: &str) -> bool {
+        if pattern.is_empty() || self.lines.is_empty() {
+            return false;
+        }
+        let prev_row = self.cursor_row;
+        let needle: Vec<char> = pattern.chars().collect();
+        let mut row = self.cursor_row;
+        let mut col = self.cursor_col + 1;
+        while row < self.lines.len() {
+            let line = &self.lines[row];
+            if let Some(idx) = find_in_line(line, &needle, col) {
+                self.cursor_row = row;
+                self.cursor_col = idx;
+                if self.cursor_row != prev_row {
+                    self.clear_line_undo();
+                }
+                return true;
+            }
+            if !self.find_cross_line {
+                break;
+            }
+            row += 1;
+            col = 0;
+        }
+        false
+    }
+
+    pub(super) fn search_backward(&mut self, pattern: &str) -> bool {
+        if pattern.is_empty() || self.lines.is_empty() {
+            return false;
+        }
+        let prev_row = self.cursor_row;
+        let needle: Vec<char> = pattern.chars().collect();
+        let mut row = self.cursor_row;
+        let mut col = self.cursor_col.saturating_sub(1);
+        loop {
+            let line = &self.lines[row];
+            if let Some(idx) = find_in_line_rev(line, &needle, col) {
+                self.cursor_row = row;
+                self.cursor_col = idx;
+                if self.cursor_row != prev_row {
+                    self.clear_line_undo();
+                }
+                return true;
+            }
+            if row == 0 || !self.find_cross_line {
+                break;
+            }
+            row -= 1;
+            let len = self.line_len(row);
+            col = len.saturating_sub(1);
+        }
+        false
+    }
+}
+
+fn find_in_line(line: &str, needle: &[char], start_col: usize) -> Option<usize> {
+    if needle.is_empty() {
+        return None;
+    }
+    let chars: Vec<char> = line.chars().collect();
+    if start_col >= chars.len() {
+        return None;
+    }
+    let max_start = chars.len().saturating_sub(needle.len());
+    for i in start_col..=max_start {
+        if chars[i..i + needle.len()] == *needle {
+            return Some(i);
+        }
+    }
+    None
+}
+
+fn find_in_line_rev(line: &str, needle: &[char], end_col: usize) -> Option<usize> {
+    if needle.is_empty() {
+        return None;
+    }
+    let chars: Vec<char> = line.chars().collect();
+    if chars.is_empty() {
+        return None;
+    }
+    let max_start = chars.len().saturating_sub(needle.len());
+    let mut i = end_col.min(max_start);
+    loop {
+        if chars[i..i + needle.len()] == *needle {
+            return Some(i);
+        }
+        if i == 0 {
+            break;
+        }
+        i -= 1;
+    }
+    None
 }
 
 pub(super) fn char_count_in_range(app: &App, start: (usize, usize), end: (usize, usize)) -> usize {

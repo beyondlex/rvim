@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
+use super::types::{CommandPrompt, SearchSpec};
 use super::App;
 
 impl App {
@@ -131,6 +132,29 @@ impl App {
             }
         }
 
+        Ok(false)
+    }
+
+    pub(super) fn execute_search(&mut self) -> Result<bool> {
+        let pattern = self.command_buffer.clone();
+        if pattern.is_empty() {
+            return Ok(false);
+        }
+        let reverse = matches!(self.command_prompt, CommandPrompt::SearchBackward);
+        let found = if reverse {
+            self.search_backward(&pattern)
+        } else {
+            self.search_forward(&pattern)
+        };
+        if !found {
+            self.set_status(format!(
+                "Pattern not found: {}{}",
+                if reverse { "?" } else { "/" },
+                pattern
+            ));
+        } else {
+            self.last_search = Some(SearchSpec { pattern, reverse });
+        }
         Ok(false)
     }
 }

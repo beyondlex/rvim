@@ -39,6 +39,8 @@ Goal: Minimal Vim-like feel.
 Checklist:
 - [x] Command line (":" prompt)
 - [x] `:w`, `:q`, `:wq`, `:e`
+- [x] Search prompt (`/` and `?`)
+- [x] Repeat search (`n`/`N`)
 - [x] Motions: w, b, e, 0, $, gg, G
 - [x] Operators: d, y, c (with motions)
 - [x] Visual mode (char-wise)

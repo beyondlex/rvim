@@ -7,7 +7,7 @@ use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-use crate::app::{App, Mode, VisualSelection, VisualSelectionKind};
+use crate::app::{App, CommandPrompt, Mode, VisualSelection, VisualSelectionKind};
 
 pub fn apply_cursor_style(app: &App) -> Result<()> {
     match app.mode {
@@ -59,7 +59,10 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
     let mode_label = match app.mode {
         Mode::Normal => "NORMAL",
         Mode::Insert => "INSERT",
-        Mode::Command => "COMMAND",
+        Mode::Command => match app.command_prompt {
+            CommandPrompt::Command => "COMMAND",
+            CommandPrompt::SearchForward | CommandPrompt::SearchBackward => "SEARCH",
+        },
         Mode::VisualChar => "VISUAL",
         Mode::VisualLine => "VISUAL LINE",
         Mode::VisualBlock => "VISUAL BLOCK",
@@ -91,7 +94,12 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
     f.render_widget(status_paragraph, status_area);
 
     let message = if app.mode == Mode::Command {
-        Paragraph::new(format!(":{}", app.command_buffer))
+        let prefix = match app.command_prompt {
+            CommandPrompt::Command => ':',
+            CommandPrompt::SearchForward => '/',
+            CommandPrompt::SearchBackward => '?',
+        };
+        Paragraph::new(format!("{}{}", prefix, app.command_buffer))
     } else {
         Paragraph::new(app.status_message.clone())
     };

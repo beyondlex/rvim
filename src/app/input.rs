@@ -1260,7 +1260,13 @@ fn complete_path_in_command(app: &mut App) -> bool {
         return true;
     }
 
-    let (expanded_path_part, had_tilde) = expand_tilde(path_part);
+    let (quote_char, raw_path) = strip_leading_quote(path_part);
+    let unescaped = if quote_char.is_some() {
+        raw_path.to_string()
+    } else {
+        unescape_path(raw_path)
+    };
+    let (expanded_path_part, _had_tilde) = expand_tilde(&unescaped);
     let mut dir_part;
     let mut base;
     let mut dir_for_fs;
@@ -1269,19 +1275,14 @@ fn complete_path_in_command(app: &mut App) -> bool {
     let path_is_dir =
         !trimmed.is_empty() && fs::metadata(trimmed).map(|m| m.is_dir()).unwrap_or(false);
     if path_is_dir {
-        let display_dir = if had_tilde {
-            let expanded_display = unexpand_tilde(trimmed);
-            format!("{}/", expanded_display.trim_end_matches('/'))
-        } else {
-            format!("{}/", trimmed)
-        };
+        let display_dir = format!("{}/", unescaped.trim_end_matches('/'));
         dir_part = display_dir;
         base = "";
         dir_for_fs = trimmed.to_string();
     } else {
-        let (dir_display, file_base) = match path_part.rfind('/') {
-            Some(idx) => (&path_part[..=idx], &path_part[idx + 1..]),
-            None => ("", path_part),
+        let (dir_display, file_base) = match unescaped.rfind('/') {
+            Some(idx) => (&unescaped[..=idx], &unescaped[idx + 1..]),
+            None => ("", unescaped.as_str()),
         };
         let (dir_fs, _) = match expanded_path_part.rfind('/') {
             Some(idx) => (&expanded_path_part[..=idx], &expanded_path_part[idx + 1..]),
@@ -1315,8 +1316,20 @@ fn complete_path_in_command(app: &mut App) -> bool {
             if entry.path().is_dir() {
                 candidate.push('/');
             }
-            matches.push(candidate);
+            matches.push(format_candidate(&candidate, quote_char));
         }
+    }
+
+    if base == "." || base == ".." {
+        let mut candidate = if dir_part.is_empty() {
+            format!("{}/", base)
+        } else {
+            format!("{}{}", dir_part, base)
+        };
+        if !candidate.ends_with('/') {
+            candidate.push('/');
+        }
+        matches.push(format_candidate(&candidate, quote_char));
     }
 
     if matches.is_empty() {
@@ -1349,17 +1362,54 @@ fn expand_tilde(input: &str) -> (String, bool) {
     (input.to_string(), false)
 }
 
-fn unexpand_tilde(input: &str) -> String {
-    let Ok(home) = std::env::var("HOME") else {
-        return input.to_string();
-    };
-    if input == home {
-        return "~".to_string();
+fn strip_leading_quote(input: &str) -> (Option<char>, &str) {
+    let mut chars = input.chars();
+    match chars.next() {
+        Some('"') => (Some('"'), &input[1..]),
+        Some('\'') => (Some('\''), &input[1..]),
+        _ => (None, input),
     }
-    if let Some(rest) = input.strip_prefix(&home) {
-        if rest.starts_with('/') {
-            return format!("~{}", rest);
+}
+
+fn unescape_path(input: &str) -> String {
+    let mut out = String::new();
+    let mut iter = input.chars();
+    while let Some(ch) = iter.next() {
+        if ch == '\\' {
+            if let Some(next) = iter.next() {
+                out.push(next);
+            } else {
+                out.push('\\');
+            }
+        } else {
+            out.push(ch);
         }
     }
-    input.to_string()
+    out
+}
+
+fn escape_unquoted_path(input: &str) -> String {
+    let mut out = String::new();
+    for ch in input.chars() {
+        if ch == ' ' || ch == '\\' {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
+}
+
+fn format_candidate(candidate: &str, quote_char: Option<char>) -> String {
+    if let Some(quote) = quote_char {
+        let mut out = String::new();
+        out.push(quote);
+        for ch in candidate.chars() {
+            if ch == quote || ch == '\\' {
+                out.push('\\');
+            }
+            out.push(ch);
+        }
+        return out;
+    }
+    escape_unquoted_path(candidate)
 }

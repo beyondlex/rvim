@@ -1,7 +1,7 @@
 # rvim Blueprint
 
 Owner: Lex  
-Last updated: 2026-02-03
+Last updated: 2026-02-04
 
 ## Vision
 Build a small, fast, terminal-first editor inspired by Vim, implemented in Rust.
@@ -18,6 +18,7 @@ Start with a minimal usable editor, then incrementally add modal editing and ext
 - Modal editing (Normal/Insert/Visual/Command)
 - Basic motions, operators, and visual selection
 - Undo/redo + bracketed paste
+- Multi-buffer management + command completion UX
 
 ## Roadmap
 
@@ -47,6 +48,7 @@ Checklist:
 - [x] Visual mode (line/block)
 - [x] Registers (unnamed + simple named)
 - [x] Text objects (iw/aw, i{}/a{}, i()/a(), i[]/a[], i</a>, i"/i', it/at)
+- [x] Command line history + completion (popover)
 - [ ] Macro record/playback (single register)
 
 ### Phase 3 — Reliability & Performance
@@ -82,6 +84,8 @@ Checklist:
 - Smart indent supports `{[(` and optional `:` rules; `:set shiftwidth=` and `:set indentcolon`.
 - Codebase split into modules under `src/app/` plus `src/ui.rs`.
 - Delete/change yanks into register (dw/ciw/diw/visual d/c/x).
+- Multi-buffer commands: `:ls`, `:b`, `:bn`, `:bp`, `:bd`.
+- Command completion: `Tab`/`Shift-Tab` for `:e`, `:w`, `:set`, and command names; popover list with scrollbar.
 
 ## Architecture Sketch
 

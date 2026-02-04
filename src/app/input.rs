@@ -329,13 +329,24 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             }
             (KeyCode::Char('p'), KeyModifiers::NONE) => app.paste_after(),
             (KeyCode::Char('P'), _) => app.paste_before(),
-            (KeyCode::Char('h'), KeyModifiers::NONE) | (KeyCode::Left, _) => app.move_left(),
-            (KeyCode::Char('j'), KeyModifiers::NONE) | (KeyCode::Down, _) => app.move_down(),
-            (KeyCode::Char('k'), KeyModifiers::NONE) | (KeyCode::Up, _) => app.move_up(),
-            (KeyCode::Char('l'), KeyModifiers::NONE) | (KeyCode::Right, _) => app.move_right(),
+            (KeyCode::Char('h'), KeyModifiers::NONE) | (KeyCode::Left, _) => {
+                let count = app.pending_count.take().unwrap_or(1);
+                for _ in 0..count {
+                    app.move_left();
+                }
+            }
+            (KeyCode::Char('l'), KeyModifiers::NONE) | (KeyCode::Right, _) => {
+                let count = app.pending_count.take().unwrap_or(1);
+                for _ in 0..count {
+                    app.move_right();
+                }
+            }
             (KeyCode::Char('w'), KeyModifiers::NONE) => {
+                let count = app.pending_count.take().unwrap_or(1);
                 if let Some(op) = app.operator_pending.take() {
-                    app.move_word_forward();
+                    for _ in 0..count {
+                        app.move_word_forward();
+                    }
                     let mut end = (app.cursor_row, app.cursor_col);
                     if let Some(prev) = app.prev_pos(end.0, end.1) {
                         end = prev;
@@ -347,14 +358,29 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                         app.set_status("-- INSERT --");
                     }
                 } else {
-                    app.move_word_forward();
+                    for _ in 0..count {
+                        app.move_word_forward();
+                    }
                 }
             }
-            (KeyCode::Char('b'), KeyModifiers::NONE) => app.move_word_back(),
-            (KeyCode::Char('e'), KeyModifiers::NONE) => app.move_word_end(),
+            (KeyCode::Char('b'), KeyModifiers::NONE) => {
+                let count = app.pending_count.take().unwrap_or(1);
+                for _ in 0..count {
+                    app.move_word_back();
+                }
+            }
+            (KeyCode::Char('e'), KeyModifiers::NONE) => {
+                let count = app.pending_count.take().unwrap_or(1);
+                for _ in 0..count {
+                    app.move_word_end();
+                }
+            }
             (KeyCode::Char('W'), _) => {
+                let count = app.pending_count.take().unwrap_or(1);
                 if let Some(op) = app.operator_pending.take() {
-                    app.move_big_word_forward();
+                    for _ in 0..count {
+                        app.move_big_word_forward();
+                    }
                     let mut end = (app.cursor_row, app.cursor_col);
                     if let Some(prev) = app.prev_pos(end.0, end.1) {
                         end = prev;
@@ -366,11 +392,23 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                         app.set_status("-- INSERT --");
                     }
                 } else {
-                    app.move_big_word_forward();
+                    for _ in 0..count {
+                        app.move_big_word_forward();
+                    }
                 }
             }
-            (KeyCode::Char('B'), _) => app.move_big_word_back(),
-            (KeyCode::Char('E'), _) => app.move_big_word_end(),
+            (KeyCode::Char('B'), _) => {
+                let count = app.pending_count.take().unwrap_or(1);
+                for _ in 0..count {
+                    app.move_big_word_back();
+                }
+            }
+            (KeyCode::Char('E'), _) => {
+                let count = app.pending_count.take().unwrap_or(1);
+                for _ in 0..count {
+                    app.move_big_word_end();
+                }
+            }
             (KeyCode::Char('0'), KeyModifiers::NONE) => app.move_line_start(),
             (KeyCode::Char('$'), _) => app.move_line_end(),
             (KeyCode::Char('g'), KeyModifiers::NONE) => {
@@ -385,7 +423,25 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                     app.pending_g = true;
                 }
             }
-            (KeyCode::Char('G'), _) => app.move_to_bottom(),
+            (KeyCode::Char('j'), KeyModifiers::NONE) | (KeyCode::Down, _) => {
+                let count = app.pending_count.take().unwrap_or(1);
+                for _ in 0..count {
+                    app.move_down();
+                }
+            }
+            (KeyCode::Char('k'), KeyModifiers::NONE) | (KeyCode::Up, _) => {
+                let count = app.pending_count.take().unwrap_or(1);
+                for _ in 0..count {
+                    app.move_up();
+                }
+            }
+            (KeyCode::Char('G'), _) => {
+                if let Some(count) = app.pending_count.take() {
+                    app.move_to_line(count);
+                } else {
+                    app.move_to_bottom();
+                }
+            }
             (KeyCode::Char('n'), KeyModifiers::NONE) => {
                 if let Some(spec) = app.last_search.clone() {
                     let found = if spec.reverse {
@@ -891,7 +947,13 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                     app.pending_g = true;
                 }
             }
-            (KeyCode::Char('G'), _) => app.move_to_bottom(),
+            (KeyCode::Char('G'), _) => {
+                if let Some(count) = app.pending_count.take() {
+                    app.move_to_line(count);
+                } else {
+                    app.move_to_bottom();
+                }
+            }
             (KeyCode::Char('f'), KeyModifiers::NONE) => {
                 app.pending_find = Some(FindPending {
                     until: false,

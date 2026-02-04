@@ -4,11 +4,27 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use super::edit::selection_to_last_visual;
 use super::types::{
     FindPending, FindSpec, Mode, Operator, OperatorPending, TextObjectKind, TextObjectPending,
-    TextObjectTarget, VisualSelectionKind,
+    RepeatKey, TextObjectTarget, VisualSelectionKind,
 };
 use super::{App, VisualSelection};
 
 pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
+    let pre_tick = app.change_tick;
+    if !app.repeat_replaying && !app.repeat_recording && should_start_repeat(app, &key) {
+        app.repeat_recording = true;
+        app.repeat_changed = false;
+        app.repeat_buffer.clear();
+    }
+    let skip_record = matches!(app.mode, Mode::Normal)
+        && key.code == KeyCode::Char('.')
+        && key.modifiers == KeyModifiers::NONE;
+    if app.repeat_recording && !app.repeat_replaying && !skip_record {
+        app.repeat_buffer.push(RepeatKey {
+            code: key.code,
+            modifiers: key.modifiers,
+        });
+    }
+
     let is_quit = matches!(key.code, KeyCode::Char('q')) && key.modifiers == KeyModifiers::CONTROL;
     if !is_quit {
         app.quit_confirm = false;
@@ -57,6 +73,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                     }
                 }
             }
+            finalize_repeat(app, pre_tick);
             return Ok(false);
         }
     }
@@ -109,11 +126,16 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 }
             }
         }
+        finalize_repeat(app, pre_tick);
         return Ok(false);
     }
 
     match app.mode {
         Mode::Normal => match (key.code, key.modifiers) {
+            (KeyCode::Char('.'), KeyModifiers::NONE) => {
+                replay_last_change(app)?;
+                return Ok(false);
+            }
             (KeyCode::Char('r'), KeyModifiers::CONTROL) => app.redo(),
             (KeyCode::Char('z'), KeyModifiers::CONTROL) => app.undo(),
             (KeyCode::Char('u'), KeyModifiers::NONE) => app.undo(),
@@ -212,33 +234,42 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.operator_pending = None;
             }
             (KeyCode::Char('d'), KeyModifiers::NONE) => {
+                let mut handled = false;
                 if let Some(op) = app.operator_pending.take() {
                     if op.op == Operator::Delete {
                         app.yank_line(app.cursor_row);
                         app.delete_line(app.cursor_row);
-                        return Ok(false);
+                        app.operator_pending = None;
+                        handled = true;
                     }
                 }
-                app.operator_pending = Some(OperatorPending {
-                    op: Operator::Delete,
-                    start_row: app.cursor_row,
-                    start_col: app.cursor_col,
-                });
+                if !handled {
+                    app.operator_pending = Some(OperatorPending {
+                        op: Operator::Delete,
+                        start_row: app.cursor_row,
+                        start_col: app.cursor_col,
+                    });
+                }
             }
             (KeyCode::Char('y'), KeyModifiers::NONE) => {
+                let mut handled = false;
                 if let Some(op) = app.operator_pending.take() {
                     if op.op == Operator::Yank {
                         app.yank_line(app.cursor_row);
-                        return Ok(false);
+                        app.operator_pending = None;
+                        handled = true;
                     }
                 }
-                app.operator_pending = Some(OperatorPending {
-                    op: Operator::Yank,
-                    start_row: app.cursor_row,
-                    start_col: app.cursor_col,
-                });
+                if !handled {
+                    app.operator_pending = Some(OperatorPending {
+                        op: Operator::Yank,
+                        start_row: app.cursor_row,
+                        start_col: app.cursor_col,
+                    });
+                }
             }
             (KeyCode::Char('c'), KeyModifiers::NONE) => {
+                let mut handled = false;
                 if let Some(op) = app.operator_pending.take() {
                     if op.op == Operator::Change {
                         app.yank_line(app.cursor_row);
@@ -246,14 +277,17 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                         app.mode = Mode::Insert;
                         app.insert_undo_snapshot = false;
                         app.set_status("-- INSERT --");
-                        return Ok(false);
+                        app.operator_pending = None;
+                        handled = true;
                     }
                 }
-                app.operator_pending = Some(OperatorPending {
-                    op: Operator::Change,
-                    start_row: app.cursor_row,
-                    start_col: app.cursor_col,
-                });
+                if !handled {
+                    app.operator_pending = Some(OperatorPending {
+                        op: Operator::Change,
+                        start_row: app.cursor_row,
+                        start_col: app.cursor_col,
+                    });
+                }
             }
             (KeyCode::Char('p'), KeyModifiers::NONE) => app.paste_after(),
             (KeyCode::Char('P'), _) => app.paste_before(),
@@ -720,5 +754,110 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
         }
     }
 
+    finalize_repeat(app, pre_tick);
+
     Ok(false)
+}
+
+fn should_start_repeat(app: &App, key: &KeyEvent) -> bool {
+    match app.mode {
+        Mode::Normal => match (key.code, key.modifiers) {
+            (KeyCode::Char('i'), KeyModifiers::NONE)
+            | (KeyCode::Char('a'), KeyModifiers::NONE)
+            | (KeyCode::Char('I'), _)
+            | (KeyCode::Char('A'), _)
+            | (KeyCode::Char('o'), KeyModifiers::NONE)
+            | (KeyCode::Char('O'), _)
+            | (KeyCode::Char('x'), KeyModifiers::NONE)
+            | (KeyCode::Char('p'), KeyModifiers::NONE)
+            | (KeyCode::Char('P'), _)
+            | (KeyCode::Char('d'), KeyModifiers::NONE)
+            | (KeyCode::Char('c'), KeyModifiers::NONE)
+            | (KeyCode::Char('v'), KeyModifiers::NONE)
+            | (KeyCode::Char('V'), _)
+            | (KeyCode::Char('v'), KeyModifiers::CONTROL) => true,
+            _ => false,
+        },
+        Mode::VisualChar | Mode::VisualLine | Mode::VisualBlock => match (key.code, key.modifiers) {
+            (KeyCode::Char('d'), KeyModifiers::NONE)
+            | (KeyCode::Char('c'), KeyModifiers::NONE)
+            | (KeyCode::Char('p'), KeyModifiers::NONE)
+            | (KeyCode::Char('P'), _)
+            | (KeyCode::Char('I'), _)
+            | (KeyCode::Char('A'), _) => true,
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+fn should_finish_repeat(app: &App) -> bool {
+    app.repeat_changed
+        && !matches!(app.mode, Mode::Insert | Mode::Command | Mode::VisualChar | Mode::VisualLine | Mode::VisualBlock)
+        && app.operator_pending.is_none()
+        && app.pending_textobj.is_none()
+        && app.pending_find.is_none()
+        && !app.pending_g
+}
+
+fn should_cancel_repeat(app: &App) -> bool {
+    !app.repeat_changed
+        && matches!(app.mode, Mode::Normal)
+        && app.operator_pending.is_none()
+        && app.pending_textobj.is_none()
+        && app.pending_find.is_none()
+        && !app.pending_g
+}
+
+fn finalize_repeat(app: &mut App, pre_tick: u64) {
+    if app.repeat_recording && !app.repeat_replaying {
+        if app.change_tick != pre_tick {
+            app.repeat_changed = true;
+        }
+        if should_finish_repeat(app) {
+            if app.repeat_changed {
+                app.last_change = app.repeat_buffer.clone();
+            }
+            app.repeat_recording = false;
+            app.repeat_changed = false;
+            app.repeat_buffer.clear();
+        } else if should_cancel_repeat(app) {
+            app.repeat_recording = false;
+            app.repeat_changed = false;
+            app.repeat_buffer.clear();
+        }
+    }
+}
+
+fn replay_last_change(app: &mut App) -> Result<()> {
+    if app.last_change.is_empty() {
+        app.set_status("No previous change");
+        return Ok(());
+    }
+    if app.last_change.len() == 2
+        && matches!(app.last_change[0].code, KeyCode::Char('d'))
+        && app.last_change[0].modifiers == KeyModifiers::NONE
+        && matches!(app.last_change[1].code, KeyCode::Char('d'))
+        && app.last_change[1].modifiers == KeyModifiers::NONE
+    {
+        app.repeat_replaying = true;
+        app.repeat_recording = false;
+        app.repeat_changed = false;
+        app.repeat_buffer.clear();
+        app.yank_line(app.cursor_row);
+        app.delete_line(app.cursor_row);
+        app.repeat_replaying = false;
+        return Ok(());
+    }
+    let keys = app.last_change.clone();
+    app.repeat_replaying = true;
+    app.repeat_recording = false;
+    app.repeat_changed = false;
+    app.repeat_buffer.clear();
+    for rk in keys {
+        let event = KeyEvent::new(rk.code, rk.modifiers);
+        let _ = handle_key(app, event)?;
+    }
+    app.repeat_replaying = false;
+    Ok(())
 }

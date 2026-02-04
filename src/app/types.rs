@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
+use crossterm::event::{KeyCode, KeyModifiers};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     Normal,
@@ -64,6 +66,12 @@ pub struct App {
     pub(crate) undo_limit: usize,
     pub(crate) line_undo: Option<LineUndo>,
     pub(crate) is_restoring: bool,
+    pub(crate) repeat_recording: bool,
+    pub(crate) repeat_replaying: bool,
+    pub(crate) repeat_changed: bool,
+    pub(crate) repeat_buffer: Vec<RepeatKey>,
+    pub(crate) last_change: Vec<RepeatKey>,
+    pub(crate) change_tick: u64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -150,6 +158,12 @@ pub(super) enum CharClass {
     Space,
     Word,
     Punct,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RepeatKey {
+    pub(crate) code: KeyCode,
+    pub(crate) modifiers: KeyModifiers,
 }
 
 pub(super) fn char_class(ch: char) -> CharClass {

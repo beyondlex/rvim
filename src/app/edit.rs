@@ -1,9 +1,11 @@
 use anyhow::Result;
 
 use super::motion::char_count_in_range;
+use crossterm::event::{KeyCode, KeyModifiers};
+
 use super::types::{
     char_class, char_to_byte_idx, normalize_range, CharClass, EditorState, LastVisual, LineUndo,
-    Mode, Operator, OperatorPending, VisualSelection, VisualSelectionKind, YankType,
+    Mode, Operator, OperatorPending, RepeatKey, VisualSelection, VisualSelectionKind, YankType,
 };
 use super::App;
 
@@ -45,6 +47,12 @@ impl App {
             undo_limit: 200,
             line_undo: None,
             is_restoring: false,
+            repeat_recording: false,
+            repeat_replaying: false,
+            repeat_changed: false,
+            repeat_buffer: Vec::new(),
+            last_change: Vec::new(),
+            change_tick: 0,
         }
     }
 
@@ -115,6 +123,19 @@ impl App {
     pub fn insert_text(&mut self, text: &str) {
         if text.is_empty() {
             return;
+        }
+        if self.repeat_recording && !self.repeat_replaying {
+            for ch in text.chars() {
+                let code = if ch == '\n' {
+                    KeyCode::Enter
+                } else {
+                    KeyCode::Char(ch)
+                };
+                self.repeat_buffer.push(RepeatKey {
+                    code,
+                    modifiers: KeyModifiers::NONE,
+                });
+            }
         }
         self.record_undo();
         self.insert_undo_snapshot = true;
@@ -558,6 +579,7 @@ impl App {
         if self.mode == Mode::Insert && self.insert_undo_snapshot {
             return;
         }
+        self.change_tick = self.change_tick.wrapping_add(1);
         self.undo_stack.push(self.snapshot());
         if self.undo_stack.len() > self.undo_limit {
             let overflow = self.undo_stack.len() - self.undo_limit;

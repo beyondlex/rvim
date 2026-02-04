@@ -5,7 +5,7 @@ use crossterm::cursor::SetCursorStyle;
 use crossterm::execute;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::app::{App, CommandPrompt, Mode, VisualSelection, VisualSelectionKind};
 
@@ -179,7 +179,7 @@ fn render_completion_popover(f: &mut Frame<'_>, app: &App, main_area: Rect, mess
     }
 
     let max_len = completion_max_label_len(app);
-    let width = (max_len + 3).min(main_area.width as usize).max(6) as u16;
+    let width = (max_len + 2).min(main_area.width as usize).max(4) as u16;
     let height = 6
         .min(labels.len())
         .min(main_area.height as usize)
@@ -190,17 +190,16 @@ fn render_completion_popover(f: &mut Frame<'_>, app: &App, main_area: Rect, mess
         .saturating_add(1)
         .min(main_area.right().saturating_sub(width))
         .max(main_area.x);
-    let y = message_area
-        .y
-        .saturating_sub(height)
-        .max(main_area.y);
+    let y = message_area.y.saturating_sub(height).max(main_area.y);
 
     let area = Rect { x, y, width, height };
     let lines = completion_window(app, &labels, width as usize, height as usize);
-    let block = Block::default()
-        .borders(Borders::NONE)
-        .style(Style::default().bg(app.theme.current_line_bg));
-    let widget = Paragraph::new(lines).block(block);
+    f.render_widget(Clear, area);
+    let widget = Paragraph::new(lines).style(
+        Style::default()
+            .bg(app.theme.current_line_bg)
+            .add_modifier(Modifier::DIM),
+    );
     f.render_widget(widget, area);
 }
 
@@ -267,10 +266,13 @@ fn completion_window(
                         .fg(app.theme.selection_fg)
                         .bg(app.theme.selection_bg),
                 ),
-                Span::raw(bar.to_string()),
+                Span::styled(bar.to_string(), Style::default().fg(app.theme.search_bg)),
             ])
         } else {
-            Line::from(vec![Span::raw(text), Span::raw(bar.to_string())])
+            Line::from(vec![
+                Span::raw(text),
+                Span::styled(bar.to_string(), Style::default().fg(app.theme.search_bg)),
+            ])
         };
         out.push(line);
     }

@@ -667,7 +667,7 @@ fn find_in_line(line: &str, needle: &[char], start_col: usize) -> Option<usize> 
         return None;
     }
     let chars: Vec<char> = line.chars().collect();
-    if start_col >= chars.len() {
+    if needle.len() > chars.len() || start_col >= chars.len() {
         return None;
     }
     let max_start = chars.len().saturating_sub(needle.len());
@@ -684,7 +684,7 @@ fn find_in_line_rev(line: &str, needle: &[char], end_col: usize) -> Option<usize
         return None;
     }
     let chars: Vec<char> = line.chars().collect();
-    if chars.is_empty() {
+    if chars.is_empty() || needle.len() > chars.len() {
         return None;
     }
     let max_start = chars.len().saturating_sub(needle.len());
@@ -714,4 +714,17 @@ pub(super) fn char_count_in_range(app: &App, start: (usize, usize), end: (usize,
     }
     count += end.1 + 1;
     count
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn search_does_not_panic_when_pattern_longer_than_line() {
+        let mut app = App::new(None, "a\nbb\nccc".to_string());
+        app.cursor_row = 0;
+        app.cursor_col = 0;
+        assert!(!app.search_forward("abcdef"));
+    }
 }

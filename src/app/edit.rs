@@ -574,7 +574,7 @@ impl App {
         is_escaped(&chars, col)
     }
 
-    pub(super) fn set_status(&mut self, msg: impl Into<String>) {
+    pub fn set_status(&mut self, msg: impl Into<String>) {
         self.status_message = msg.into();
         self.status_time = Some(std::time::Instant::now());
     }

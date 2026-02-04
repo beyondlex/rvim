@@ -59,7 +59,8 @@ fn main() -> Result<()> {
         if event::poll(Duration::from_millis(50))? {
             match event::read()? {
                 Event::Key(key) => {
-                    let should_quit = with_error_logging(&mut app, handle_key(&mut app, key), "input")?;
+                    let res = handle_key(&mut app, key);
+                    let should_quit = with_error_logging(&mut app, res, "input")?;
                     if should_quit {
                         break;
                     }

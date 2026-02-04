@@ -7,6 +7,7 @@ This document summarizes the currently supported normal/command mode features.
 Enter command mode with `:` then press Enter to execute.
 
 Command completion: in command mode, `Tab`/`Shift-Tab` cycles completion for commands and options.
+Example (plugin): register custom commands via `App::register_command_candidate("MyCmd")`.
 
 ### File commands
 

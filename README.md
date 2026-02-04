@@ -30,6 +30,14 @@ theme = "dark"
 current_line_bg = "#464646"
 ```
 
+## Logs
+
+Fatal panics are appended to:
+
+```
+~/.config/rvim/rvim.log
+```
+
 ## Themes
 
 Built-in themes: `light`, `dark`, `solarized`.

@@ -3,8 +3,10 @@ mod ui;
 
 use std::fs;
 use std::io;
+use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
+use std::time::SystemTime;
 
 use anyhow::Result;
 use crossterm::event::{self, Event};
@@ -33,6 +35,7 @@ impl Drop for TerminalGuard {
 }
 
 fn main() -> Result<()> {
+    install_panic_logger();
     let path = std::env::args().nth(1).map(PathBuf::from);
     let content = match &path {
         Some(p) => fs::read_to_string(p).unwrap_or_default(),
@@ -72,4 +75,20 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn install_panic_logger() {
+    std::panic::set_hook(Box::new(|info| {
+        let Some(home) = std::env::var_os("HOME") else {
+            return;
+        };
+        let mut path = PathBuf::from(home);
+        path.push(".config/rvim");
+        let _ = fs::create_dir_all(&path);
+        path.push("rvim.log");
+        if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
+            let ts = SystemTime::now();
+            let _ = writeln!(file, "[{:?}] panic: {}", ts, info);
+        }
+    }));
 }

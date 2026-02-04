@@ -411,6 +411,11 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             }
             (KeyCode::Char('0'), KeyModifiers::NONE) => app.move_line_start(),
             (KeyCode::Char('$'), _) => app.move_line_end(),
+            (KeyCode::Char('%'), KeyModifiers::NONE) => {
+                if !app.percent_jump() {
+                    app.set_status("No matching bracket");
+                }
+            }
             (KeyCode::Char('g'), KeyModifiers::NONE) => {
                 if app.pending_g {
                     if let Some(count) = app.pending_count.take() {

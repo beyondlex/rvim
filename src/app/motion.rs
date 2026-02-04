@@ -537,6 +537,129 @@ impl App {
         }
         false
     }
+
+    pub(super) fn percent_jump(&mut self) -> bool {
+        let prev_row = self.cursor_row;
+        let (open, close, forward) = if let Some(ch) = self.char_at(self.cursor_row, self.cursor_col)
+        {
+            match ch {
+                '(' => ('(', ')', true),
+                '[' => ('[', ']', true),
+                '{' => ('{', '}', true),
+                '<' => ('<', '>', true),
+                ')' => ('(', ')', false),
+                ']' => ('[', ']', false),
+                '}' => ('{', '}', false),
+                '>' => ('<', '>', false),
+                _ => {
+                    if let Some((r, c, o, cl, fwd)) = self.find_next_bracket() {
+                        self.cursor_row = r;
+                        self.cursor_col = c;
+                        (o, cl, fwd)
+                    } else {
+                        return false;
+                    }
+                }
+            }
+        } else if let Some((r, c, o, cl, fwd)) = self.find_next_bracket() {
+            self.cursor_row = r;
+            self.cursor_col = c;
+            (o, cl, fwd)
+        } else {
+            return false;
+        };
+        let target = if forward {
+            self.find_match_forward(open, close)
+        } else {
+            self.find_match_backward(open, close)
+        };
+        if let Some((row, col)) = target {
+            self.cursor_row = row;
+            self.cursor_col = col;
+            if self.cursor_row != prev_row {
+                self.clear_line_undo();
+            }
+            return true;
+        }
+        false
+    }
+
+    fn find_match_forward(&self, open: char, close: char) -> Option<(usize, usize)> {
+        let mut depth = 0i32;
+        let mut r = self.cursor_row;
+        let mut c = self.cursor_col;
+        loop {
+            if let Some((nr, nc)) = self.advance_pos(r, c) {
+                r = nr;
+                c = nc;
+            } else {
+                break;
+            }
+            if let Some(ch) = self.char_at(r, c) {
+                if ch == open {
+                    depth += 1;
+                } else if ch == close {
+                    if depth == 0 {
+                        return Some((r, c));
+                    }
+                    depth -= 1;
+                }
+            }
+        }
+        None
+    }
+
+    fn find_match_backward(&self, open: char, close: char) -> Option<(usize, usize)> {
+        let mut depth = 0i32;
+        let mut r = self.cursor_row;
+        let mut c = self.cursor_col;
+        loop {
+            if let Some((pr, pc)) = self.prev_pos(r, c) {
+                r = pr;
+                c = pc;
+            } else {
+                break;
+            }
+            if let Some(ch) = self.char_at(r, c) {
+                if ch == close {
+                    depth += 1;
+                } else if ch == open {
+                    if depth == 0 {
+                        return Some((r, c));
+                    }
+                    depth -= 1;
+                }
+            }
+        }
+        None
+    }
+
+    fn find_next_bracket(&self) -> Option<(usize, usize, char, char, bool)> {
+        let mut r = self.cursor_row;
+        let mut c = self.cursor_col;
+        loop {
+            if let Some((nr, nc)) = self.advance_pos(r, c) {
+                r = nr;
+                c = nc;
+            } else {
+                break;
+            }
+            if let Some(ch) = self.char_at(r, c) {
+                match ch {
+                    '(' => return Some((r, c, '(', ')', true)),
+                    '[' => return Some((r, c, '[', ']', true)),
+                    '{' => return Some((r, c, '{', '}', true)),
+                    '<' => return Some((r, c, '<', '>', true)),
+                    ')' => return Some((r, c, '(', ')', false)),
+                    ']' => return Some((r, c, '[', ']', false)),
+                    '}' => return Some((r, c, '{', '}', false)),
+                    '>' => return Some((r, c, '<', '>', false)),
+                    _ => {}
+                }
+            }
+        }
+        None
+    }
 }
 
 fn find_in_line(line: &str, needle: &[char], start_col: usize) -> Option<usize> {

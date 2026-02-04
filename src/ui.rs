@@ -173,15 +173,15 @@ fn slice_line(line: &str, start_col: usize, max_cols: usize) -> String {
 }
 
 fn render_completion_popover(f: &mut Frame<'_>, app: &App, main_area: Rect, message_area: Rect) {
-    let labels = completion_labels(app, 6);
+    let labels = completion_labels(app);
     if labels.is_empty() {
         return;
     }
 
     let max_len = completion_max_label_len(app);
-    let width = (max_len + 1).min(main_area.width as usize).max(6) as u16;
-    let height = labels
-        .len()
+    let width = (max_len + 3).min(main_area.width as usize).max(6) as u16;
+    let height = 6
+        .min(labels.len())
         .min(main_area.height as usize)
         .max(1) as u16;
 
@@ -196,7 +196,7 @@ fn render_completion_popover(f: &mut Frame<'_>, app: &App, main_area: Rect, mess
         .max(main_area.y);
 
     let area = Rect { x, y, width, height };
-    let lines = completion_window(app, &labels, width as usize, 6);
+    let lines = completion_window(app, &labels, width as usize, height as usize);
     let block = Block::default()
         .borders(Borders::NONE)
         .style(Style::default().bg(app.theme.current_line_bg));
@@ -204,20 +204,15 @@ fn render_completion_popover(f: &mut Frame<'_>, app: &App, main_area: Rect, mess
     f.render_widget(widget, area);
 }
 
-fn completion_labels(app: &App, max_items: usize) -> Vec<String> {
+fn completion_labels(app: &App) -> Vec<String> {
     let total = app.completion_candidates.len();
-    if total == 0 || max_items == 0 {
+    if total == 0 {
         return Vec::new();
     }
-    let start = app.completion_index.unwrap_or(0);
-    let count = total.min(max_items);
-    let mut out = Vec::with_capacity(count);
-    for i in 0..count {
-        let idx = (start + i) % total;
-        let text = completion_item_label(&app.completion_candidates[idx]);
-        out.push(text);
-    }
-    out
+    app.completion_candidates
+        .iter()
+        .map(|c| completion_item_label(c))
+        .collect()
 }
 
 fn completion_max_label_len(app: &App) -> usize {
@@ -233,18 +228,30 @@ fn completion_window(
     app: &App,
     labels: &[String],
     width: usize,
-    max_items: usize,
+    window_size: usize,
 ) -> Vec<Line<'static>> {
     if labels.is_empty() {
         return Vec::new();
     }
     let text_width = width.saturating_sub(1);
-    let total = app.completion_candidates.len();
-    let visible = labels.len();
-    let scroll = completion_scrollbar(total, visible, app.completion_index.unwrap_or(0));
-    let mut out = Vec::with_capacity(visible);
-    for (i, label) in labels.iter().enumerate() {
-        let mut text = label.clone();
+    let total = labels.len();
+    let window = window_size.min(total).max(1);
+    let selected = app.completion_index.unwrap_or(0).min(total.saturating_sub(1));
+    let anchor = window / 2;
+    let mut window_start = if selected <= anchor {
+        0
+    } else {
+        selected - anchor
+    };
+    if window_start + window > total {
+        window_start = total - window;
+    }
+    let selected_pos = selected.saturating_sub(window_start);
+    let scroll = completion_scrollbar(total, window, selected);
+    let mut out = Vec::with_capacity(window);
+    for i in 0..window {
+        let label = &labels[window_start + i];
+        let mut text = format!(" {}", label);
         let text_len = text.chars().count();
         if text_len < text_width {
             text.push_str(&" ".repeat(text_width - text_len));
@@ -252,7 +259,7 @@ fn completion_window(
             text = text.chars().take(text_width).collect();
         }
         let bar = if scroll.contains(&i) { '|' } else { ' ' };
-        let line = if i == 0 {
+        let line = if i == selected_pos {
             Line::from(vec![
                 Span::styled(
                     text,
@@ -270,13 +277,13 @@ fn completion_window(
     out
 }
 
-fn completion_scrollbar(total: usize, visible: usize, start: usize) -> std::ops::Range<usize> {
-    if total == 0 || visible == 0 || total <= visible {
+fn completion_scrollbar(total: usize, window: usize, selected: usize) -> std::ops::Range<usize> {
+    if total == 0 || window == 0 || total <= window {
         return 0..0;
     }
-    let thumb_size = (visible * visible / total).max(1);
-    let max_start = visible.saturating_sub(thumb_size);
-    let thumb_start = ((start * visible) / total).min(max_start);
+    let thumb_size = (window * window / total).max(1);
+    let max_start = window.saturating_sub(thumb_size);
+    let thumb_start = ((selected * window) / total).min(max_start);
     thumb_start..(thumb_start + thumb_size)
 }
 
@@ -343,11 +350,12 @@ fn completion_anchor_x(app: &App, message_area: Rect) -> u16 {
     } else {
         cmd
     };
-    let slash_col = path_part.rfind('/').map(|idx| path_part[..idx].chars().count());
+    let trimmed = path_part.trim_end_matches('/');
+    let slash_col = trimmed.rfind('/').map(|idx| trimmed[..idx].chars().count());
     let prefix_len = cmd.chars().count().saturating_sub(path_part.chars().count());
     let offset = slash_col
         .map(|col| prefix_len + col + 1)
-        .unwrap_or_else(|| cmd.chars().count());
+        .unwrap_or_else(|| prefix_len + trimmed.chars().count());
     message_area.x + 1 + offset as u16
 }
 

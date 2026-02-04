@@ -102,6 +102,22 @@ impl App {
                             };
                             self.set_status(value);
                         }
+                        "relativenumber" | "rnu" => {
+                            self.relative_number = true;
+                            self.set_status("relativenumber");
+                        }
+                        "norelativenumber" | "nornu" => {
+                            self.relative_number = false;
+                            self.set_status("norelativenumber");
+                        }
+                        "relativenumber?" | "rnu?" => {
+                            let value = if self.relative_number {
+                                "relativenumber"
+                            } else {
+                                "norelativenumber"
+                            };
+                            self.set_status(value);
+                        }
                         "shiftwidth?" => {
                             self.set_status(format!("shiftwidth={}", self.shift_width));
                         }
@@ -124,7 +140,9 @@ impl App {
                         _ => self.set_status("Unknown option"),
                     }
                 } else {
-                    self.set_status("Usage: :set findcross|nofindcross|shiftwidth=4|indentcolon");
+                    self.set_status(
+                        "Usage: :set findcross|nofindcross|shiftwidth=4|indentcolon|relativenumber",
+                    );
                 }
             }
             _ => {

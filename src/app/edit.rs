@@ -32,6 +32,7 @@ impl App {
             find_cross_line: true,
             shift_width: 4,
             indent_colon: false,
+            relative_number: false,
             yank_buffer: String::new(),
             yank_type: YankType::Char,
             visual_start: None,

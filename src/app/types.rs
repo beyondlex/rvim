@@ -57,6 +57,7 @@ pub struct App {
     pub(crate) find_cross_line: bool,
     pub(crate) shift_width: usize,
     pub(crate) indent_colon: bool,
+    pub(crate) relative_number: bool,
     pub(crate) yank_buffer: String,
     pub(crate) yank_type: YankType,
     pub(crate) visual_start: Option<(usize, usize)>,

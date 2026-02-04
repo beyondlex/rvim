@@ -33,7 +33,12 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
     let message_area = rows[2];
 
     let viewport_rows = main_area.height as usize;
-    let viewport_cols = main_area.width as usize;
+    let line_count = app.lines.len().max(1);
+    let gutter_width = line_count.to_string().len() + 1;
+    let viewport_cols = main_area
+        .width
+        .saturating_sub(gutter_width as u16)
+        .max(1) as usize;
     app.ensure_cursor_visible(viewport_rows, viewport_cols);
 
     let mut text_lines: Vec<Line> = Vec::with_capacity(viewport_rows);
@@ -48,9 +53,13 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
                 viewport_cols,
                 selection,
                 app.last_search.as_ref().map(|s| s.pattern.as_str()),
+                gutter_width,
+                idx == app.cursor_row,
+                app.relative_number,
+                app.cursor_row,
             ));
         } else {
-            text_lines.push(Line::from("~"));
+            text_lines.push(render_empty_line(gutter_width));
         }
     }
 
@@ -113,7 +122,9 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
             f.set_cursor_position(Position::new(cursor_x, cursor_y));
         }
     } else {
-        let cursor_x = (app.cursor_col.saturating_sub(app.scroll_col)) as u16 + main_area.x;
+        let cursor_x = (app.cursor_col.saturating_sub(app.scroll_col)) as u16
+            + main_area.x
+            + gutter_width as u16;
         let cursor_y = (app.cursor_row.saturating_sub(app.scroll_row)) as u16 + main_area.y;
         if cursor_x < main_area.right() && cursor_y < main_area.bottom() {
             f.set_cursor_position(Position::new(cursor_x, cursor_y));
@@ -143,6 +154,10 @@ fn render_line_with_selection(
     max_cols: usize,
     selection: Option<VisualSelection>,
     search_pattern: Option<&str>,
+    gutter_width: usize,
+    is_current_line: bool,
+    relative_number: bool,
+    cursor_row: usize,
 ) -> Line<'static> {
     let mut spans: Vec<Span> = Vec::new();
     let mut col = 0;
@@ -152,6 +167,21 @@ fn render_line_with_selection(
     let search_matches = search_pattern
         .and_then(|pat| build_search_mask(line, pat))
         .unwrap_or_default();
+
+    let number = if relative_number && line_idx != cursor_row {
+        line_idx.abs_diff(cursor_row)
+    } else {
+        line_idx + 1
+    };
+    let line_label = format!("{:>width$} ", number, width = gutter_width - 1);
+    spans.push(Span::styled(
+        line_label,
+        if is_current_line {
+            Style::default().fg(Color::Rgb(255, 165, 0))
+        } else {
+            Style::default().fg(Color::DarkGray)
+        },
+    ));
 
     let mut is_selected = |c: usize| -> bool {
         let selection = match selection {
@@ -188,7 +218,15 @@ fn render_line_with_selection(
         if col >= start_col && (col - start_col) < max_cols {
             let selected = is_selected(col);
             let matched = search_matches.get(col).copied().unwrap_or(false);
-            let state = if selected { 2 } else if matched { 1 } else { 0 };
+            let state = if selected {
+                3
+            } else if matched {
+                2
+            } else if is_current_line {
+                1
+            } else {
+                0
+            };
             if buf.is_empty() {
                 buf_state = state;
                 buf.push(ch);
@@ -211,13 +249,23 @@ fn render_line_with_selection(
         spans.push(Span::styled(buf, style_for_state(buf_state)));
     }
 
+    if is_current_line {
+        let line_len = line.chars().count();
+        let rendered = line_len.saturating_sub(start_col).min(max_cols);
+        let pad = max_cols.saturating_sub(rendered);
+        if pad > 0 {
+            spans.push(Span::styled(" ".repeat(pad), style_for_state(1)));
+        }
+    }
+
     Line::from(spans)
 }
 
 fn style_for_state(state: u8) -> Style {
     match state {
-        2 => Style::default().fg(Color::Black).bg(Color::Cyan),
-        1 => Style::default().fg(Color::Black).bg(Color::Yellow),
+        3 => Style::default().fg(Color::Black).bg(Color::Cyan),
+        2 => Style::default().fg(Color::Black).bg(Color::Yellow),
+        1 => Style::default().bg(Color::Rgb(64, 64, 64)),
         _ => Style::default(),
     }
 }
@@ -241,4 +289,9 @@ fn build_search_mask(line: &str, pattern: &str) -> Option<Vec<bool>> {
         }
     }
     Some(mask)
+}
+
+fn render_empty_line(gutter_width: usize) -> Line<'static> {
+    let gutter = " ".repeat(gutter_width);
+    Line::from(format!("{}~", gutter))
 }

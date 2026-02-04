@@ -99,6 +99,14 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
     if app.mode == Mode::Command && app.command_buffer.starts_with("set theme=") {
         status.push_str(" | themes: light dark solarized");
     }
+    if app.mode == Mode::Command
+        && !app.completion_candidates.is_empty()
+        && app.command_prompt == CommandPrompt::Command
+    {
+        let total = app.completion_candidates.len();
+        let idx = app.completion_index.unwrap_or(0) + 1;
+        status.push_str(&format!(" | tab:{}/{}", idx, total));
+    }
     if matches!(app.mode, Mode::VisualChar | Mode::VisualLine | Mode::VisualBlock) {
         if let Some(summary) = app.selection_summary() {
             status.push_str(" | ");

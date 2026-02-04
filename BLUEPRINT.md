@@ -113,3 +113,6 @@ Week 2 (modal basics):
 - How far should Vim compatibility go? (limit to core motions)
 - Config format: TOML vs Lua
 - Plugin story: Rust-only vs WASM
+
+## Reference
+- `COMMANDS.md` — supported commands and options

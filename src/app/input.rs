@@ -692,7 +692,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.search_history_index = None;
             }
             (KeyCode::Tab, _) => {
-                if complete_theme_in_command(app) {
+                if complete_set_in_command(app) {
                     app.search_history_index = None;
                 }
             }
@@ -1155,22 +1155,60 @@ fn replay_last_change(app: &mut App) -> Result<()> {
     Ok(())
 }
 
-fn complete_theme_in_command(app: &mut App) -> bool {
-    let prefix = "set theme=";
-    if !app.command_buffer.starts_with(prefix) {
+fn complete_set_in_command(app: &mut App) -> bool {
+    if !app.command_buffer.starts_with("set") {
         return false;
     }
-    let options = ["light", "dark", "solarized"];
-    let current = app.command_buffer[prefix.len()..].trim();
-    let next = if current.is_empty() {
-        options[0]
-    } else if let Some(pos) = options.iter().position(|opt| opt == &current) {
+    let mut rest = app.command_buffer.strip_prefix("set").unwrap_or("").trim_start();
+    if rest.starts_with("theme=") {
+        let prefix = "set theme=";
+        let options = ["light", "dark", "solarized"];
+        let current = app.command_buffer[prefix.len()..].trim();
+        let next = if current.is_empty() {
+            options[0]
+        } else if let Some(pos) = options.iter().position(|opt| opt == &current) {
+            options[(pos + 1) % options.len()]
+        } else if let Some(found) = options.iter().find(|opt| opt.starts_with(current)) {
+            found
+        } else {
+            options[0]
+        };
+        app.command_buffer = format!("{}{}", prefix, next);
+        return true;
+    }
+
+    let options = [
+        "findcross",
+        "nofindcross",
+        "findcross?",
+        "shiftwidth=",
+        "shiftwidth?",
+        "indentcolon",
+        "noindentcolon",
+        "indentcolon?",
+        "relativenumber",
+        "norelativenumber",
+        "relativenumber?",
+        "rnu",
+        "nornu",
+        "rnu?",
+        "theme=",
+        "theme?",
+    ];
+
+    if rest.is_empty() {
+        app.command_buffer = format!("set {}", options[0]);
+        return true;
+    }
+
+    let current = rest;
+    let next = if let Some(pos) = options.iter().position(|opt| opt == &current) {
         options[(pos + 1) % options.len()]
     } else if let Some(found) = options.iter().find(|opt| opt.starts_with(current)) {
         found
     } else {
         options[0]
     };
-    app.command_buffer = format!("{}{}", prefix, next);
+    app.command_buffer = format!("set {}", next);
     true
 }

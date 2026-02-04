@@ -696,7 +696,12 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.clear_completion();
             }
             (KeyCode::Tab, _) => {
-                if complete_path_in_command(app) || complete_set_in_command(app) {
+                if complete_path_in_command(app, false) || complete_set_in_command(app, false) {
+                    app.search_history_index = None;
+                }
+            }
+            (KeyCode::BackTab, _) => {
+                if complete_path_in_command(app, true) || complete_set_in_command(app, true) {
                     app.search_history_index = None;
                 }
             }
@@ -1164,7 +1169,7 @@ fn replay_last_change(app: &mut App) -> Result<()> {
     Ok(())
 }
 
-fn complete_set_in_command(app: &mut App) -> bool {
+fn complete_set_in_command(app: &mut App, reverse: bool) -> bool {
     if !app.command_buffer.starts_with("set") {
         return false;
     }
@@ -1176,7 +1181,11 @@ fn complete_set_in_command(app: &mut App) -> bool {
         let next = if current.is_empty() {
             options[0]
         } else if let Some(pos) = options.iter().position(|opt| opt == &current) {
-            options[(pos + 1) % options.len()]
+            if reverse {
+                options[(pos + options.len() - 1) % options.len()]
+            } else {
+                options[(pos + 1) % options.len()]
+            }
         } else if let Some(found) = options.iter().find(|opt| opt.starts_with(current)) {
             found
         } else {
@@ -1212,7 +1221,11 @@ fn complete_set_in_command(app: &mut App) -> bool {
 
     let current = rest;
     let next = if let Some(pos) = options.iter().position(|opt| opt == &current) {
-        options[(pos + 1) % options.len()]
+        if reverse {
+            options[(pos + options.len() - 1) % options.len()]
+        } else {
+            options[(pos + 1) % options.len()]
+        }
     } else if let Some(found) = options.iter().find(|opt| opt.starts_with(current)) {
         found
     } else {
@@ -1222,7 +1235,7 @@ fn complete_set_in_command(app: &mut App) -> bool {
     true
 }
 
-fn complete_path_in_command(app: &mut App) -> bool {
+fn complete_path_in_command(app: &mut App, reverse: bool) -> bool {
     if !matches!(app.command_prompt, CommandPrompt::Command) {
         return false;
     }
@@ -1235,6 +1248,14 @@ fn complete_path_in_command(app: &mut App) -> bool {
         ("edit ", "")
     } else if let Some(rest) = app.command_buffer.strip_prefix("edit ") {
         ("edit ", rest)
+    } else if app.command_buffer == "w" {
+        ("w ", "")
+    } else if let Some(rest) = app.command_buffer.strip_prefix("w ") {
+        ("w ", rest)
+    } else if app.command_buffer == "write" {
+        ("write ", "")
+    } else if let Some(rest) = app.command_buffer.strip_prefix("write ") {
+        ("write ", rest)
     } else {
         return false;
     };
@@ -1251,7 +1272,13 @@ fn complete_path_in_command(app: &mut App) -> bool {
 
     if should_cycle {
         let next_idx = match app.completion_index {
-            Some(idx) => (idx + 1) % app.completion_candidates.len(),
+            Some(idx) => {
+                if reverse {
+                    (idx + app.completion_candidates.len() - 1) % app.completion_candidates.len()
+                } else {
+                    (idx + 1) % app.completion_candidates.len()
+                }
+            }
             None => 0,
         };
         app.completion_index = Some(next_idx);

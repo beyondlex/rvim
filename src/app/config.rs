@@ -33,7 +33,7 @@ pub fn load_config() -> Result<Config> {
     Ok(Config::default())
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Clone)]
 pub(crate) struct ThemeOverride {
     pub(crate) status_fg: Option<String>,
     pub(crate) status_bg: Option<String>,

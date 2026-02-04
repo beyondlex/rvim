@@ -36,6 +36,7 @@ impl App {
             pending_count: None,
             theme: super::theme::Theme::default_theme(),
             theme_name: "light".to_string(),
+            theme_overrides: None,
             yank_buffer: String::new(),
             yank_type: YankType::Char,
             visual_start: None,
@@ -66,16 +67,10 @@ impl App {
     }
 
     pub fn apply_config(&mut self, config: &super::config::Config) {
+        self.theme_overrides = config.themes.clone();
         if let Some(name) = config.theme.as_deref() {
             if let Some(theme) = super::theme::Theme::from_name(name) {
                 self.set_theme_named(name, theme);
-            }
-        }
-        if let Some(themes) = config.themes.as_ref() {
-            if let Some(name) = config.theme.as_deref() {
-                if let Some(overrides) = themes.get(&name.to_ascii_lowercase()) {
-                    super::config::apply_theme_overrides(&mut self.theme, overrides);
-                }
             }
         }
     }
@@ -87,6 +82,13 @@ impl App {
     pub fn set_theme_named(&mut self, name: &str, theme: super::theme::Theme) {
         self.theme = theme;
         self.theme_name = name.to_ascii_lowercase();
+        if let Some(overrides) = self
+            .theme_overrides
+            .as_ref()
+            .and_then(|m| m.get(&self.theme_name))
+        {
+            super::config::apply_theme_overrides(&mut self.theme, overrides);
+        }
     }
 
     pub fn theme_mut(&mut self) -> &mut super::theme::Theme {

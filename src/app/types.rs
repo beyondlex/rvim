@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::time::Instant;
+use std::collections::HashMap;
 
 use crossterm::event::{KeyCode, KeyModifiers};
 
@@ -63,6 +64,7 @@ pub struct App {
     pub(crate) pending_count: Option<usize>,
     pub(crate) theme: Theme,
     pub(crate) theme_name: String,
+    pub(crate) theme_overrides: Option<HashMap<String, super::config::ThemeOverride>>,
     pub(crate) yank_buffer: String,
     pub(crate) yank_type: YankType,
     pub(crate) visual_start: Option<(usize, usize)>,

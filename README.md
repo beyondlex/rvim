@@ -25,6 +25,9 @@ Example (`rvim.toml`):
 
 ```toml
 theme = "dark"
+
+[themes.dark]
+current_line_bg = "#464646"
 ```
 
 ## Themes

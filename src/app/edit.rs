@@ -71,6 +71,13 @@ impl App {
                 self.set_theme_named(name, theme);
             }
         }
+        if let Some(themes) = config.themes.as_ref() {
+            if let Some(name) = config.theme.as_deref() {
+                if let Some(overrides) = themes.get(&name.to_ascii_lowercase()) {
+                    super::config::apply_theme_overrides(&mut self.theme, overrides);
+                }
+            }
+        }
     }
 
     pub fn set_theme(&mut self, theme: super::theme::Theme) {

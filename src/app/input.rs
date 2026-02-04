@@ -137,6 +137,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.pending_textobj = None;
                 app.pending_find = None;
                 app.pending_g = false;
+                app.last_search = None;
             }
             (KeyCode::Char('.'), KeyModifiers::NONE) => {
                 replay_last_change(app)?;
@@ -238,18 +239,21 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.mode = Mode::Command;
                 app.command_prompt = CommandPrompt::SearchForward;
                 app.command_buffer.clear();
+                app.search_history_index = None;
                 app.operator_pending = None;
             }
             (KeyCode::Char('?'), KeyModifiers::NONE) => {
                 app.mode = Mode::Command;
                 app.command_prompt = CommandPrompt::SearchBackward;
                 app.command_buffer.clear();
+                app.search_history_index = None;
                 app.operator_pending = None;
             }
             (KeyCode::Char(':'), KeyModifiers::NONE) => {
                 app.mode = Mode::Command;
                 app.command_prompt = CommandPrompt::Command;
                 app.command_buffer.clear();
+                app.search_history_index = None;
                 app.operator_pending = None;
             }
             (KeyCode::Char('d'), KeyModifiers::NONE) => {
@@ -579,6 +583,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.mode = Mode::Normal;
                 app.command_buffer.clear();
                 app.command_prompt = CommandPrompt::Command;
+                app.search_history_index = None;
             }
             (KeyCode::Enter, _) => {
                 let should_quit = if matches!(app.command_prompt, CommandPrompt::Command) {
@@ -589,18 +594,56 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.command_buffer.clear();
                 app.mode = Mode::Normal;
                 app.command_prompt = CommandPrompt::Command;
+                app.search_history_index = None;
                 if should_quit {
                     return Ok(true);
                 }
             }
             (KeyCode::Backspace, _) => {
                 app.command_buffer.pop();
+                app.search_history_index = None;
+            }
+            (KeyCode::Up, _) => {
+                if matches!(
+                    app.command_prompt,
+                    CommandPrompt::SearchForward | CommandPrompt::SearchBackward
+                ) {
+                    if app.search_history.is_empty() {
+                        app.set_status("No search history");
+                    } else {
+                        let next_idx = match app.search_history_index {
+                            None => app.search_history.len() - 1,
+                            Some(idx) => idx.saturating_sub(1),
+                        };
+                        app.search_history_index = Some(next_idx);
+                        app.command_buffer = app.search_history[next_idx].clone();
+                    }
+                }
+            }
+            (KeyCode::Down, _) => {
+                if matches!(
+                    app.command_prompt,
+                    CommandPrompt::SearchForward | CommandPrompt::SearchBackward
+                ) {
+                    if let Some(idx) = app.search_history_index {
+                        if idx + 1 < app.search_history.len() {
+                            let next_idx = idx + 1;
+                            app.search_history_index = Some(next_idx);
+                            app.command_buffer = app.search_history[next_idx].clone();
+                        } else {
+                            app.search_history_index = None;
+                            app.command_buffer.clear();
+                        }
+                    }
+                }
             }
             (KeyCode::Char(ch), KeyModifiers::NONE) => {
                 app.command_buffer.push(ch);
+                app.search_history_index = None;
             }
             (KeyCode::Char(ch), KeyModifiers::SHIFT) => {
                 app.command_buffer.push(ch);
+                app.search_history_index = None;
             }
             _ => {}
         },

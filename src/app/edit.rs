@@ -50,6 +50,8 @@ impl App {
             is_restoring: false,
             command_prompt: CommandPrompt::Command,
             last_search: None,
+            search_history: Vec::new(),
+            search_history_index: None,
             repeat_recording: false,
             repeat_replaying: false,
             repeat_changed: false,

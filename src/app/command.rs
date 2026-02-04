@@ -140,6 +140,15 @@ impl App {
         if pattern.is_empty() {
             return Ok(false);
         }
+        if self
+            .search_history
+            .last()
+            .map(|last| last != &pattern)
+            .unwrap_or(true)
+        {
+            self.search_history.push(pattern.clone());
+        }
+        self.search_history_index = None;
         let reverse = matches!(self.command_prompt, CommandPrompt::SearchBackward);
         let found = if reverse {
             self.search_backward(&pattern)

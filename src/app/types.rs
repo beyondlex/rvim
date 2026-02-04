@@ -75,6 +75,8 @@ pub struct App {
     pub(crate) is_restoring: bool,
     pub(crate) command_prompt: CommandPrompt,
     pub(crate) last_search: Option<SearchSpec>,
+    pub(crate) search_history: Vec<String>,
+    pub(crate) search_history_index: Option<usize>,
     pub(crate) repeat_recording: bool,
     pub(crate) repeat_replaying: bool,
     pub(crate) repeat_changed: bool,

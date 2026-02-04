@@ -47,6 +47,7 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
                 app.scroll_col,
                 viewport_cols,
                 selection,
+                app.last_search.as_ref().map(|s| s.pattern.as_str()),
             ));
         } else {
             text_lines.push(Line::from("~"));
@@ -141,18 +142,22 @@ fn render_line_with_selection(
     start_col: usize,
     max_cols: usize,
     selection: Option<VisualSelection>,
+    search_pattern: Option<&str>,
 ) -> Line<'static> {
     let mut spans: Vec<Span> = Vec::new();
     let mut col = 0;
     let mut buf = String::new();
-    let mut buf_selected = false;
+    let mut buf_state = 0u8;
 
-    let selection = match selection {
-        Some(r) => r,
-        None => return Line::from(slice_line(line, start_col, max_cols)),
-    };
+    let search_matches = search_pattern
+        .and_then(|pat| build_search_mask(line, pat))
+        .unwrap_or_default();
 
     let mut is_selected = |c: usize| -> bool {
+        let selection = match selection {
+            Some(r) => r,
+            None => return false,
+        };
         match selection.kind {
             VisualSelectionKind::Char(sel_start, sel_end) => {
                 let within_line = line_idx >= sel_start.0 && line_idx <= sel_end.0;
@@ -182,22 +187,17 @@ fn render_line_with_selection(
     for ch in line.chars() {
         if col >= start_col && (col - start_col) < max_cols {
             let selected = is_selected(col);
+            let matched = search_matches.get(col).copied().unwrap_or(false);
+            let state = if selected { 2 } else if matched { 1 } else { 0 };
             if buf.is_empty() {
-                buf_selected = selected;
+                buf_state = state;
                 buf.push(ch);
-            } else if selected == buf_selected {
+            } else if state == buf_state {
                 buf.push(ch);
             } else {
-                spans.push(Span::styled(
-                    buf.clone(),
-                    if buf_selected {
-                        Style::default().fg(Color::Black).bg(Color::Cyan)
-                    } else {
-                        Style::default()
-                    },
-                ));
+                spans.push(Span::styled(buf.clone(), style_for_state(buf_state)));
                 buf.clear();
-                buf_selected = selected;
+                buf_state = state;
                 buf.push(ch);
             }
         }
@@ -208,15 +208,37 @@ fn render_line_with_selection(
     }
 
     if !buf.is_empty() {
-        spans.push(Span::styled(
-            buf,
-            if buf_selected {
-                Style::default().fg(Color::Black).bg(Color::Cyan)
-            } else {
-                Style::default()
-            },
-        ));
+        spans.push(Span::styled(buf, style_for_state(buf_state)));
     }
 
     Line::from(spans)
+}
+
+fn style_for_state(state: u8) -> Style {
+    match state {
+        2 => Style::default().fg(Color::Black).bg(Color::Cyan),
+        1 => Style::default().fg(Color::Black).bg(Color::Yellow),
+        _ => Style::default(),
+    }
+}
+
+fn build_search_mask(line: &str, pattern: &str) -> Option<Vec<bool>> {
+    if pattern.is_empty() {
+        return None;
+    }
+    let chars: Vec<char> = line.chars().collect();
+    let needle: Vec<char> = pattern.chars().collect();
+    if needle.is_empty() || needle.len() > chars.len() {
+        return None;
+    }
+    let mut mask = vec![false; chars.len()];
+    let max_start = chars.len().saturating_sub(needle.len());
+    for i in 0..=max_start {
+        if chars[i..i + needle.len()] == *needle {
+            for j in 0..needle.len() {
+                mask[i + j] = true;
+            }
+        }
+    }
+    Some(mask)
 }

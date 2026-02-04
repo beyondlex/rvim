@@ -34,6 +34,7 @@ impl App {
             indent_colon: false,
             relative_number: false,
             pending_count: None,
+            theme: super::types::Theme::default_theme(),
             yank_buffer: String::new(),
             yank_type: YankType::Char,
             visual_start: None,

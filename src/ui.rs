@@ -57,6 +57,7 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
                 idx == app.cursor_row,
                 app.relative_number,
                 app.cursor_row,
+                app,
             ));
         } else {
             text_lines.push(render_empty_line(gutter_width));
@@ -99,8 +100,11 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
         }
     }
 
-    let status_paragraph = Paragraph::new(status)
-        .style(Style::default().fg(Color::Black).bg(Color::White));
+    let status_paragraph = Paragraph::new(status).style(
+        Style::default()
+            .fg(app.theme.status_fg)
+            .bg(app.theme.status_bg),
+    );
     f.render_widget(status_paragraph, status_area);
 
     let message = if app.mode == Mode::Command {
@@ -158,6 +162,7 @@ fn render_line_with_selection(
     is_current_line: bool,
     relative_number: bool,
     cursor_row: usize,
+    app: &App,
 ) -> Line<'static> {
     let mut spans: Vec<Span> = Vec::new();
     let mut col = 0;
@@ -177,11 +182,11 @@ fn render_line_with_selection(
     spans.push(Span::styled(
         line_label,
         if is_current_line {
-            Style::default().fg(Color::Rgb(255, 165, 0))
-        } else {
-            Style::default().fg(Color::DarkGray)
-        },
-    ));
+        Style::default().fg(app.theme.line_number_fg_current)
+    } else {
+        Style::default().fg(app.theme.line_number_fg)
+    },
+));
 
     let mut is_selected = |c: usize| -> bool {
         let selection = match selection {
@@ -233,7 +238,7 @@ fn render_line_with_selection(
             } else if state == buf_state {
                 buf.push(ch);
             } else {
-                spans.push(Span::styled(buf.clone(), style_for_state(buf_state)));
+                spans.push(Span::styled(buf.clone(), style_for_state(buf_state, app)));
                 buf.clear();
                 buf_state = state;
                 buf.push(ch);
@@ -246,7 +251,7 @@ fn render_line_with_selection(
     }
 
     if !buf.is_empty() {
-        spans.push(Span::styled(buf, style_for_state(buf_state)));
+        spans.push(Span::styled(buf, style_for_state(buf_state, app)));
     }
 
     if is_current_line {
@@ -254,18 +259,22 @@ fn render_line_with_selection(
         let rendered = line_len.saturating_sub(start_col).min(max_cols);
         let pad = max_cols.saturating_sub(rendered);
         if pad > 0 {
-            spans.push(Span::styled(" ".repeat(pad), style_for_state(1)));
+            spans.push(Span::styled(" ".repeat(pad), style_for_state(1, app)));
         }
     }
 
     Line::from(spans)
 }
 
-fn style_for_state(state: u8) -> Style {
+fn style_for_state(state: u8, app: &App) -> Style {
     match state {
-        3 => Style::default().fg(Color::Black).bg(Color::Cyan),
-        2 => Style::default().fg(Color::Black).bg(Color::Yellow),
-        1 => Style::default().bg(Color::Rgb(64, 64, 64)),
+        3 => Style::default()
+            .fg(app.theme.selection_fg)
+            .bg(app.theme.selection_bg),
+        2 => Style::default()
+            .fg(app.theme.search_fg)
+            .bg(app.theme.search_bg),
+        1 => Style::default().bg(app.theme.current_line_bg),
         _ => Style::default(),
     }
 }

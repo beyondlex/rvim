@@ -258,7 +258,7 @@ fn completion_window(
         } else if text_len > text_width {
             text = text.chars().take(text_width).collect();
         }
-        let bar = if scroll.contains(&i) { '|' } else { ' ' };
+        let bar = if scroll.contains(&i) { '█' } else { ' ' };
         let line = if i == selected_pos {
             Line::from(vec![
                 Span::styled(

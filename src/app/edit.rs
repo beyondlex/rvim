@@ -66,6 +66,9 @@ impl App {
             buffers: Vec::new(),
             current_buffer_id: 1,
             next_buffer_id: 2,
+            completion_candidates: Vec::new(),
+            completion_index: None,
+            completion_cmd_prefix: None,
         }
     }
 
@@ -177,6 +180,13 @@ impl App {
         self.repeat_replaying = false;
         self.repeat_changed = false;
         self.repeat_buffer.clear();
+        self.clear_completion();
+    }
+
+    pub fn clear_completion(&mut self) {
+        self.completion_candidates.clear();
+        self.completion_index = None;
+        self.completion_cmd_prefix = None;
     }
 
     pub fn apply_config(&mut self, config: &super::config::Config) {

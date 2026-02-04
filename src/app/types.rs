@@ -94,6 +94,9 @@ pub struct App {
     pub(crate) buffers: Vec<BufferSlot>,
     pub(crate) current_buffer_id: usize,
     pub(crate) next_buffer_id: usize,
+    pub(crate) completion_candidates: Vec<String>,
+    pub(crate) completion_index: Option<usize>,
+    pub(crate) completion_cmd_prefix: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]

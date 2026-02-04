@@ -1,5 +1,6 @@
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use std::fs;
 
 use super::edit::selection_to_last_visual;
 use super::types::{
@@ -672,6 +673,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.command_buffer.clear();
                 app.command_prompt = CommandPrompt::Command;
                 app.search_history_index = None;
+                app.clear_completion();
             }
             (KeyCode::Enter, _) => {
                 let should_quit = if matches!(app.command_prompt, CommandPrompt::Command) {
@@ -683,6 +685,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.mode = Mode::Normal;
                 app.command_prompt = CommandPrompt::Command;
                 app.search_history_index = None;
+                app.clear_completion();
                 if should_quit {
                     return Ok(true);
                 }
@@ -690,9 +693,10 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Backspace, _) => {
                 app.command_buffer.pop();
                 app.search_history_index = None;
+                app.clear_completion();
             }
             (KeyCode::Tab, _) => {
-                if complete_set_in_command(app) {
+                if complete_path_in_command(app) || complete_set_in_command(app) {
                     app.search_history_index = None;
                 }
             }
@@ -710,6 +714,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                         };
                         app.search_history_index = Some(next_idx);
                         app.command_buffer = app.search_history[next_idx].clone();
+                        app.clear_completion();
                     }
                 }
             }
@@ -723,9 +728,11 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                             let next_idx = idx + 1;
                             app.search_history_index = Some(next_idx);
                             app.command_buffer = app.search_history[next_idx].clone();
+                            app.clear_completion();
                         } else {
                             app.search_history_index = None;
                             app.command_buffer.clear();
+                            app.clear_completion();
                         }
                     }
                 }
@@ -733,10 +740,12 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Char(ch), KeyModifiers::NONE) => {
                 app.command_buffer.push(ch);
                 app.search_history_index = None;
+                app.clear_completion();
             }
             (KeyCode::Char(ch), KeyModifiers::SHIFT) => {
                 app.command_buffer.push(ch);
                 app.search_history_index = None;
+                app.clear_completion();
             }
             _ => {}
         },
@@ -1211,4 +1220,146 @@ fn complete_set_in_command(app: &mut App) -> bool {
     };
     app.command_buffer = format!("set {}", next);
     true
+}
+
+fn complete_path_in_command(app: &mut App) -> bool {
+    if !matches!(app.command_prompt, CommandPrompt::Command) {
+        return false;
+    }
+
+    let (cmd_prefix, path_part) = if app.command_buffer == "e" {
+        ("e ", "")
+    } else if let Some(rest) = app.command_buffer.strip_prefix("e ") {
+        ("e ", rest)
+    } else if app.command_buffer == "edit" {
+        ("edit ", "")
+    } else if let Some(rest) = app.command_buffer.strip_prefix("edit ") {
+        ("edit ", rest)
+    } else {
+        return false;
+    };
+
+    let should_cycle = app
+        .completion_cmd_prefix
+        .as_deref()
+        .is_some_and(|prefix| prefix == cmd_prefix)
+        && !app.completion_candidates.is_empty()
+        && app
+            .completion_candidates
+            .iter()
+            .any(|candidate| candidate == path_part);
+
+    if should_cycle {
+        let next_idx = match app.completion_index {
+            Some(idx) => (idx + 1) % app.completion_candidates.len(),
+            None => 0,
+        };
+        app.completion_index = Some(next_idx);
+        let next = app.completion_candidates[next_idx].clone();
+        app.command_buffer = format!("{}{}", cmd_prefix, next);
+        return true;
+    }
+
+    let (expanded_path_part, had_tilde) = expand_tilde(path_part);
+    let mut dir_part;
+    let mut base;
+    let mut dir_for_fs;
+
+    let trimmed = expanded_path_part.trim_end_matches('/');
+    let path_is_dir =
+        !trimmed.is_empty() && fs::metadata(trimmed).map(|m| m.is_dir()).unwrap_or(false);
+    if path_is_dir {
+        let display_dir = if had_tilde {
+            let expanded_display = unexpand_tilde(trimmed);
+            format!("{}/", expanded_display.trim_end_matches('/'))
+        } else {
+            format!("{}/", trimmed)
+        };
+        dir_part = display_dir;
+        base = "";
+        dir_for_fs = trimmed.to_string();
+    } else {
+        let (dir_display, file_base) = match path_part.rfind('/') {
+            Some(idx) => (&path_part[..=idx], &path_part[idx + 1..]),
+            None => ("", path_part),
+        };
+        let (dir_fs, _) = match expanded_path_part.rfind('/') {
+            Some(idx) => (&expanded_path_part[..=idx], &expanded_path_part[idx + 1..]),
+            None => ("", expanded_path_part.as_str()),
+        };
+        dir_part = dir_display.to_string();
+        base = file_base;
+        dir_for_fs = if dir_fs.is_empty() {
+            ".".to_string()
+        } else if dir_fs == "/" {
+            "/".to_string()
+        } else {
+            dir_fs.trim_end_matches('/').to_string()
+        };
+    }
+
+    let mut matches: Vec<String> = Vec::new();
+    if let Ok(entries) = fs::read_dir(&dir_for_fs) {
+        for entry in entries.flatten() {
+            let Ok(name) = entry.file_name().into_string() else {
+                continue;
+            };
+            if !name.starts_with(base) {
+                continue;
+            }
+            let mut candidate = if dir_part.is_empty() {
+                name
+            } else {
+                format!("{}{}", dir_part, name)
+            };
+            if entry.path().is_dir() {
+                candidate.push('/');
+            }
+            matches.push(candidate);
+        }
+    }
+
+    if matches.is_empty() {
+        app.clear_completion();
+        return false;
+    }
+
+    matches.sort();
+    app.completion_candidates = matches;
+    app.completion_index = Some(0);
+    app.completion_cmd_prefix = Some(cmd_prefix.to_string());
+    let first = app.completion_candidates[0].clone();
+    app.command_buffer = format!("{}{}", cmd_prefix, first);
+    true
+}
+
+fn expand_tilde(input: &str) -> (String, bool) {
+    if !input.starts_with('~') {
+        return (input.to_string(), false);
+    }
+    let Ok(home) = std::env::var("HOME") else {
+        return (input.to_string(), false);
+    };
+    if input == "~" {
+        return (home, true);
+    }
+    if let Some(rest) = input.strip_prefix("~/") {
+        return (format!("{}/{}", home, rest), true);
+    }
+    (input.to_string(), false)
+}
+
+fn unexpand_tilde(input: &str) -> String {
+    let Ok(home) = std::env::var("HOME") else {
+        return input.to_string();
+    };
+    if input == home {
+        return "~".to_string();
+    }
+    if let Some(rest) = input.strip_prefix(&home) {
+        if rest.starts_with('/') {
+            return format!("~{}", rest);
+        }
+    }
+    input.to_string()
 }

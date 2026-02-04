@@ -12,7 +12,7 @@ Enter command mode with `:` then press Enter to execute.
 - `:q` / `:quit` — quit (fails if dirty)
 - `:q!` / `:quit!` — quit without saving
 - `:wq` / `:x` — save and quit (use `:wq <path>` if no file name)
-- `:e <path>` / `:edit <path>` — open file (new buffer if not already open)
+- `:e <path>` / `:edit <path>` — open file (new buffer if not already open; `Tab` completes paths, including `~/`)
 
 ### Buffers
 

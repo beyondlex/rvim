@@ -33,6 +33,7 @@ impl App {
             shift_width: 4,
             indent_colon: false,
             relative_number: false,
+            pending_count: None,
             yank_buffer: String::new(),
             yank_type: YankType::Char,
             visual_start: None,

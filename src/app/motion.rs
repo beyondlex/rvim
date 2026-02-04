@@ -134,6 +134,17 @@ impl App {
         self.cursor_col = 0;
     }
 
+    pub(super) fn move_to_line(&mut self, line: usize) {
+        if self.lines.is_empty() {
+            self.cursor_row = 0;
+            self.cursor_col = 0;
+            return;
+        }
+        let target = line.saturating_sub(1).min(self.lines.len() - 1);
+        self.cursor_row = target;
+        self.cursor_col = 0;
+    }
+
     pub(super) fn move_word_forward(&mut self) {
         if let Some((row, col)) = self.next_word_start(self.cursor_row, self.cursor_col) {
             self.cursor_row = row;

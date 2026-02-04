@@ -35,6 +35,20 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
     {
         app.pending_g = false;
     }
+
+    if app.mode == Mode::Normal
+        && key.modifiers == KeyModifiers::NONE
+        && matches!(key.code, KeyCode::Char(ch) if ch.is_ascii_digit())
+    {
+        if let KeyCode::Char(ch) = key.code {
+            let digit = ch.to_digit(10).unwrap_or(0) as usize;
+            if app.pending_count.is_some() || digit != 0 {
+                let next = app.pending_count.unwrap_or(0) * 10 + digit;
+                app.pending_count = Some(next);
+                return Ok(false);
+            }
+        }
+    }
     if matches!(
         app.mode,
         Mode::Normal | Mode::VisualChar | Mode::VisualLine | Mode::VisualBlock
@@ -138,6 +152,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.pending_find = None;
                 app.pending_g = false;
                 app.last_search = None;
+                app.pending_count = None;
             }
             (KeyCode::Char('.'), KeyModifiers::NONE) => {
                 replay_last_change(app)?;
@@ -360,7 +375,11 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Char('$'), _) => app.move_line_end(),
             (KeyCode::Char('g'), KeyModifiers::NONE) => {
                 if app.pending_g {
-                    app.move_to_top();
+                    if let Some(count) = app.pending_count.take() {
+                        app.move_to_line(count);
+                    } else {
+                        app.move_to_top();
+                    }
                     app.pending_g = false;
                 } else {
                     app.pending_g = true;
@@ -950,6 +969,9 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             } else {
                 app.operator_pending = Some(op);
             }
+        }
+        if app.pending_count.is_some() && !app.pending_g {
+            app.pending_count = None;
         }
     }
 

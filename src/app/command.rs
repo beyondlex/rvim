@@ -46,7 +46,14 @@ impl App {
 
         match cmd {
             "w" | "write" => {
-                self.save()?;
+                if let Some(path) = arg.as_deref().map(PathBuf::from) {
+                    self.file_path = Some(path.clone());
+                    self.save()?;
+                } else if self.file_path.is_none() {
+                    self.set_status("Usage: :w <path>");
+                } else {
+                    self.save()?;
+                }
             }
             "q" | "quit" => {
                 if self.dirty {
@@ -59,6 +66,15 @@ impl App {
                 return Ok(true);
             }
             "wq" | "x" => {
+                if let Some(path) = arg.as_deref().map(PathBuf::from) {
+                    self.file_path = Some(path.clone());
+                    self.save()?;
+                    return Ok(true);
+                }
+                if self.file_path.is_none() {
+                    self.set_status("Usage: :wq <path>");
+                    return Ok(false);
+                }
                 self.save()?;
                 return Ok(true);
             }

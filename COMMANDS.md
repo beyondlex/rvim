@@ -8,10 +8,10 @@ Enter command mode with `:` then press Enter to execute.
 
 ### File commands
 
-- `:w` / `:write` — save
+- `:w` / `:write` — save (use `:w <path>` if no file name)
 - `:q` / `:quit` — quit (fails if dirty)
 - `:q!` / `:quit!` — quit without saving
-- `:wq` / `:x` — save and quit
+- `:wq` / `:x` — save and quit (use `:wq <path>` if no file name)
 - `:e <path>` / `:edit <path>` — open file
 
 ### Options (`:set`)

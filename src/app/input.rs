@@ -500,6 +500,14 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 }
             }
             (KeyCode::Char('x'), KeyModifiers::NONE) => app.delete_at_cursor(),
+            (KeyCode::Char('~'), KeyModifiers::NONE) => {
+                let row = app.cursor_row;
+                let col = app.cursor_col;
+                if app.line_len(row) > 0 && col < app.line_len(row) {
+                    app.toggle_case_range((row, col), (row, col));
+                    app.move_right();
+                }
+            }
             (KeyCode::Char('o'), KeyModifiers::NONE) => {
                 app.open_line_below();
                 app.mode = Mode::Insert;
@@ -713,6 +721,57 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.insert_undo_snapshot = false;
                 app.visual_start = None;
                 app.set_status("-- INSERT --");
+            }
+            (KeyCode::Char('u'), KeyModifiers::NONE) => {
+                if let Some(selection) = app.visual_selection() {
+                    match selection.kind {
+                        VisualSelectionKind::Char(start, end) => {
+                            app.change_case_range(start, end, false);
+                        }
+                        VisualSelectionKind::Line(start, end) => {
+                            app.change_case_lines(start, end, false);
+                        }
+                        VisualSelectionKind::Block { start, end } => {
+                            app.change_case_block(start, end, false);
+                        }
+                    }
+                }
+                app.mode = Mode::Normal;
+                app.visual_start = None;
+            }
+            (KeyCode::Char('U'), _) => {
+                if let Some(selection) = app.visual_selection() {
+                    match selection.kind {
+                        VisualSelectionKind::Char(start, end) => {
+                            app.change_case_range(start, end, true);
+                        }
+                        VisualSelectionKind::Line(start, end) => {
+                            app.change_case_lines(start, end, true);
+                        }
+                        VisualSelectionKind::Block { start, end } => {
+                            app.change_case_block(start, end, true);
+                        }
+                    }
+                }
+                app.mode = Mode::Normal;
+                app.visual_start = None;
+            }
+            (KeyCode::Char('~'), KeyModifiers::NONE) => {
+                if let Some(selection) = app.visual_selection() {
+                    match selection.kind {
+                        VisualSelectionKind::Char(start, end) => {
+                            app.toggle_case_range(start, end);
+                        }
+                        VisualSelectionKind::Line(start, end) => {
+                            app.toggle_case_lines(start, end);
+                        }
+                        VisualSelectionKind::Block { start, end } => {
+                            app.toggle_case_block(start, end);
+                        }
+                    }
+                }
+                app.mode = Mode::Normal;
+                app.visual_start = None;
             }
             (KeyCode::Char('i'), KeyModifiers::NONE) => {
                 app.pending_textobj = Some(TextObjectPending {

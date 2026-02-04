@@ -1150,6 +1150,154 @@ impl App {
         }
     }
 
+    pub(super) fn change_case_range(
+        &mut self,
+        start: (usize, usize),
+        end: (usize, usize),
+        to_upper: bool,
+    ) {
+        self.record_undo();
+        self.clear_line_undo();
+        let (start, end) = normalize_range(start, end);
+        if start.0 == end.0 {
+            if let Some(line) = self.lines.get(start.0).cloned() {
+                self.lines[start.0] = change_case_in_line(&line, start.1, end.1, to_upper);
+            }
+        } else {
+            for row in start.0..=end.0 {
+                if row >= self.lines.len() {
+                    break;
+                }
+                let line = self.lines[row].clone();
+                let len = line.chars().count();
+                if len == 0 {
+                    continue;
+                }
+                let (s, e) = if row == start.0 {
+                    (start.1, len.saturating_sub(1))
+                } else if row == end.0 {
+                    (0, end.1.min(len.saturating_sub(1)))
+                } else {
+                    (0, len.saturating_sub(1))
+                };
+                self.lines[row] = change_case_in_line(&line, s, e, to_upper);
+            }
+        }
+        self.dirty = true;
+    }
+
+    pub(super) fn change_case_lines(&mut self, start_row: usize, end_row: usize, to_upper: bool) {
+        self.record_undo();
+        self.clear_line_undo();
+        if self.lines.is_empty() {
+            return;
+        }
+        let start = start_row.min(self.lines.len() - 1);
+        let end = end_row.min(self.lines.len() - 1);
+        for row in start..=end {
+            let line = self.lines[row].clone();
+            let len = line.chars().count();
+            if len == 0 {
+                continue;
+            }
+            self.lines[row] = change_case_in_line(&line, 0, len.saturating_sub(1), to_upper);
+        }
+        self.dirty = true;
+    }
+
+    pub(super) fn change_case_block(
+        &mut self,
+        start: (usize, usize),
+        end: (usize, usize),
+        to_upper: bool,
+    ) {
+        self.record_undo();
+        self.clear_line_undo();
+        let (start, end) = normalize_range(start, end);
+        for row in start.0..=end.0 {
+            if row >= self.lines.len() {
+                break;
+            }
+            let line = self.lines[row].clone();
+            let len = line.chars().count();
+            if len == 0 || start.1 >= len {
+                continue;
+            }
+            let end_col = end.1.min(len.saturating_sub(1));
+            self.lines[row] = change_case_in_line(&line, start.1, end_col, to_upper);
+        }
+        self.dirty = true;
+    }
+
+    pub(super) fn toggle_case_range(&mut self, start: (usize, usize), end: (usize, usize)) {
+        self.record_undo();
+        self.clear_line_undo();
+        let (start, end) = normalize_range(start, end);
+        if start.0 == end.0 {
+            if let Some(line) = self.lines.get(start.0).cloned() {
+                self.lines[start.0] = toggle_case_in_line(&line, start.1, end.1);
+            }
+        } else {
+            for row in start.0..=end.0 {
+                if row >= self.lines.len() {
+                    break;
+                }
+                let line = self.lines[row].clone();
+                let len = line.chars().count();
+                if len == 0 {
+                    continue;
+                }
+                let (s, e) = if row == start.0 {
+                    (start.1, len.saturating_sub(1))
+                } else if row == end.0 {
+                    (0, end.1.min(len.saturating_sub(1)))
+                } else {
+                    (0, len.saturating_sub(1))
+                };
+                self.lines[row] = toggle_case_in_line(&line, s, e);
+            }
+        }
+        self.dirty = true;
+    }
+
+    pub(super) fn toggle_case_lines(&mut self, start_row: usize, end_row: usize) {
+        self.record_undo();
+        self.clear_line_undo();
+        if self.lines.is_empty() {
+            return;
+        }
+        let start = start_row.min(self.lines.len() - 1);
+        let end = end_row.min(self.lines.len() - 1);
+        for row in start..=end {
+            let line = self.lines[row].clone();
+            let len = line.chars().count();
+            if len == 0 {
+                continue;
+            }
+            self.lines[row] = toggle_case_in_line(&line, 0, len.saturating_sub(1));
+        }
+        self.dirty = true;
+    }
+
+    pub(super) fn toggle_case_block(&mut self, start: (usize, usize), end: (usize, usize)) {
+        self.record_undo();
+        self.clear_line_undo();
+        let (start, end) = normalize_range(start, end);
+        for row in start.0..=end.0 {
+            if row >= self.lines.len() {
+                break;
+            }
+            let line = self.lines[row].clone();
+            let len = line.chars().count();
+            if len == 0 || start.1 >= len {
+                continue;
+            }
+            let end_col = end.1.min(len.saturating_sub(1));
+            self.lines[row] = toggle_case_in_line(&line, start.1, end_col);
+        }
+        self.dirty = true;
+    }
+
     pub(super) fn delete_block_range(&mut self, start: (usize, usize), end: (usize, usize)) {
         let (start, end) = normalize_range(start, end);
         for row in start.0..=end.0 {
@@ -1363,6 +1511,50 @@ fn is_escaped(chars: &[char], idx: usize) -> bool {
         }
     }
     backslashes % 2 == 1
+}
+
+fn change_case_in_line(line: &str, start_col: usize, end_col: usize, to_upper: bool) -> String {
+    let chars: Vec<char> = line.chars().collect();
+    if chars.is_empty() {
+        return line.to_string();
+    }
+    let end_col = end_col.min(chars.len().saturating_sub(1));
+    let mut out = String::new();
+    for (i, ch) in chars.iter().enumerate() {
+        if i >= start_col && i <= end_col {
+            if to_upper {
+                out.extend(ch.to_uppercase());
+            } else {
+                out.extend(ch.to_lowercase());
+            }
+        } else {
+            out.push(*ch);
+        }
+    }
+    out
+}
+
+fn toggle_case_in_line(line: &str, start_col: usize, end_col: usize) -> String {
+    let chars: Vec<char> = line.chars().collect();
+    if chars.is_empty() {
+        return line.to_string();
+    }
+    let end_col = end_col.min(chars.len().saturating_sub(1));
+    let mut out = String::new();
+    for (i, ch) in chars.iter().enumerate() {
+        if i >= start_col && i <= end_col {
+            if ch.is_lowercase() {
+                out.extend(ch.to_uppercase());
+            } else if ch.is_uppercase() {
+                out.extend(ch.to_lowercase());
+            } else {
+                out.push(*ch);
+            }
+        } else {
+            out.push(*ch);
+        }
+    }
+    out
 }
 
 #[derive(Debug, Clone)]

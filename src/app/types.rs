@@ -82,6 +82,8 @@ pub struct App {
     pub(crate) line_undo: Option<LineUndo>,
     pub(crate) is_restoring: bool,
     pub(crate) command_prompt: CommandPrompt,
+    pub(crate) command_history: Vec<String>,
+    pub(crate) command_history_index: Option<usize>,
     pub(crate) last_search: Option<SearchSpec>,
     pub(crate) search_history: Vec<String>,
     pub(crate) search_history_index: Option<usize>,

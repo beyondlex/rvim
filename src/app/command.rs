@@ -215,6 +215,15 @@ impl App {
         if input.is_empty() {
             return Ok(false);
         }
+        if self
+            .command_history
+            .last()
+            .map(|last| last != &input)
+            .unwrap_or(true)
+        {
+            self.command_history.push(input.clone());
+        }
+        self.command_history_index = None;
 
         let mut parts = input.split_whitespace();
         let cmd = parts.next().unwrap_or("");

@@ -54,6 +54,8 @@ impl App {
             line_undo: None,
             is_restoring: false,
             command_prompt: CommandPrompt::Command,
+            command_history: Vec::new(),
+            command_history_index: None,
             last_search: None,
             search_history: Vec::new(),
             search_history_index: None,

@@ -673,6 +673,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.command_buffer.clear();
                 app.command_prompt = CommandPrompt::Command;
                 app.search_history_index = None;
+                app.command_history_index = None;
                 app.clear_completion();
             }
             (KeyCode::Enter, _) => {
@@ -685,6 +686,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.mode = Mode::Normal;
                 app.command_prompt = CommandPrompt::Command;
                 app.search_history_index = None;
+                app.command_history_index = None;
                 app.clear_completion();
                 if should_quit {
                     return Ok(true);
@@ -693,6 +695,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Backspace, _) => {
                 app.command_buffer.pop();
                 app.search_history_index = None;
+                app.command_history_index = None;
                 app.clear_completion();
             }
             (KeyCode::Tab, _) => {
@@ -706,7 +709,20 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 }
             }
             (KeyCode::Up, _) => {
-                if matches!(
+                if matches!(app.command_prompt, CommandPrompt::Command) {
+                    if app.command_history.is_empty() {
+                        app.set_status("No command history");
+                    } else {
+                        let next_idx = match app.command_history_index {
+                            None => app.command_history.len() - 1,
+                            Some(idx) => idx.saturating_sub(1),
+                        };
+                        app.command_history_index = Some(next_idx);
+                        app.command_buffer = app.command_history[next_idx].clone();
+                        app.search_history_index = None;
+                        app.clear_completion();
+                    }
+                } else if matches!(
                     app.command_prompt,
                     CommandPrompt::SearchForward | CommandPrompt::SearchBackward
                 ) {
@@ -719,12 +735,27 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                         };
                         app.search_history_index = Some(next_idx);
                         app.command_buffer = app.search_history[next_idx].clone();
+                        app.command_history_index = None;
                         app.clear_completion();
                     }
                 }
             }
             (KeyCode::Down, _) => {
-                if matches!(
+                if matches!(app.command_prompt, CommandPrompt::Command) {
+                    if let Some(idx) = app.command_history_index {
+                        if idx + 1 < app.command_history.len() {
+                            let next_idx = idx + 1;
+                            app.command_history_index = Some(next_idx);
+                            app.command_buffer = app.command_history[next_idx].clone();
+                            app.search_history_index = None;
+                            app.clear_completion();
+                        } else {
+                            app.command_history_index = None;
+                            app.command_buffer.clear();
+                            app.clear_completion();
+                        }
+                    }
+                } else if matches!(
                     app.command_prompt,
                     CommandPrompt::SearchForward | CommandPrompt::SearchBackward
                 ) {
@@ -733,6 +764,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                             let next_idx = idx + 1;
                             app.search_history_index = Some(next_idx);
                             app.command_buffer = app.search_history[next_idx].clone();
+                            app.command_history_index = None;
                             app.clear_completion();
                         } else {
                             app.search_history_index = None;
@@ -745,11 +777,13 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Char(ch), KeyModifiers::NONE) => {
                 app.command_buffer.push(ch);
                 app.search_history_index = None;
+                app.command_history_index = None;
                 app.clear_completion();
             }
             (KeyCode::Char(ch), KeyModifiers::SHIFT) => {
                 app.command_buffer.push(ch);
                 app.search_history_index = None;
+                app.command_history_index = None;
                 app.clear_completion();
             }
             _ => {}

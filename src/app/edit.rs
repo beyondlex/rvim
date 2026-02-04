@@ -34,7 +34,8 @@ impl App {
             indent_colon: false,
             relative_number: false,
             pending_count: None,
-            theme: super::types::Theme::default_theme(),
+            theme: super::theme::Theme::default_theme(),
+            theme_name: "light".to_string(),
             yank_buffer: String::new(),
             yank_type: YankType::Char,
             visual_start: None,
@@ -62,6 +63,27 @@ impl App {
             last_change: Vec::new(),
             change_tick: 0,
         }
+    }
+
+    pub fn apply_config(&mut self, config: &super::config::Config) {
+        if let Some(name) = config.theme.as_deref() {
+            if let Some(theme) = super::theme::Theme::from_name(name) {
+                self.set_theme_named(name, theme);
+            }
+        }
+    }
+
+    pub fn set_theme(&mut self, theme: super::theme::Theme) {
+        self.theme = theme;
+    }
+
+    pub fn set_theme_named(&mut self, name: &str, theme: super::theme::Theme) {
+        self.theme = theme;
+        self.theme_name = name.to_ascii_lowercase();
+    }
+
+    pub fn theme_mut(&mut self) -> &mut super::theme::Theme {
+        &mut self.theme
     }
 
     pub fn clear_status_if_stale(&mut self) {

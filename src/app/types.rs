@@ -2,7 +2,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use crossterm::event::{KeyCode, KeyModifiers};
-use ratatui::prelude::Color;
+
+use super::theme::Theme;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -61,6 +62,7 @@ pub struct App {
     pub(crate) relative_number: bool,
     pub(crate) pending_count: Option<usize>,
     pub(crate) theme: Theme,
+    pub(crate) theme_name: String,
     pub(crate) yank_buffer: String,
     pub(crate) yank_type: YankType,
     pub(crate) visual_start: Option<(usize, usize)>,
@@ -151,34 +153,6 @@ pub(crate) struct SearchSpec {
     pub(crate) reverse: bool,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct Theme {
-    pub(crate) status_fg: Color,
-    pub(crate) status_bg: Color,
-    pub(crate) line_number_fg: Color,
-    pub(crate) line_number_fg_current: Color,
-    pub(crate) current_line_bg: Color,
-    pub(crate) selection_fg: Color,
-    pub(crate) selection_bg: Color,
-    pub(crate) search_fg: Color,
-    pub(crate) search_bg: Color,
-}
-
-impl Theme {
-    pub(crate) fn default_theme() -> Self {
-        Self {
-            status_fg: Color::Black,
-            status_bg: Color::White,
-            line_number_fg: Color::DarkGray,
-            line_number_fg_current: Color::Rgb(255, 165, 0),
-            current_line_bg: Color::Rgb(64, 64, 64),
-            selection_fg: Color::Black,
-            selection_bg: Color::Cyan,
-            search_fg: Color::Black,
-            search_bg: Color::Yellow,
-        }
-    }
-}
 #[derive(Debug, Clone, Copy)]
 pub(super) enum TextObjectKind {
     Inner,

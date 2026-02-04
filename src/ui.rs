@@ -93,6 +93,10 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
         app.cursor_col + 1
     );
     status.push_str(&format!(" | undo:{} redo:{}", app.undo_len(), app.redo_len()));
+    status.push_str(&format!(" | theme:{}", app.theme_name));
+    if app.mode == Mode::Command && app.command_buffer.starts_with("set theme=") {
+        status.push_str(" | themes: light dark solarized");
+    }
     if matches!(app.mode, Mode::VisualChar | Mode::VisualLine | Mode::VisualBlock) {
         if let Some(summary) = app.selection_summary() {
             status.push_str(" | ");

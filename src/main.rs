@@ -12,7 +12,7 @@ use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScree
 use crossterm::{execute, event::EnableBracketedPaste, event::DisableBracketedPaste};
 use ratatui::prelude::*;
 
-use crate::app::{handle_key, App, Mode};
+use crate::app::{handle_key, load_config, App, Mode};
 use crate::ui::apply_cursor_style;
 
 struct TerminalGuard;
@@ -44,6 +44,9 @@ fn main() -> Result<()> {
     terminal.clear()?;
 
     let mut app = App::new(path, content);
+    if let Ok(cfg) = load_config() {
+        app.apply_config(&cfg);
+    }
     apply_cursor_style(&app)?;
 
     loop {

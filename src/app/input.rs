@@ -691,6 +691,11 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.command_buffer.pop();
                 app.search_history_index = None;
             }
+            (KeyCode::Tab, _) => {
+                if complete_theme_in_command(app) {
+                    app.search_history_index = None;
+                }
+            }
             (KeyCode::Up, _) => {
                 if matches!(
                     app.command_prompt,
@@ -1148,4 +1153,24 @@ fn replay_last_change(app: &mut App) -> Result<()> {
     }
     app.repeat_replaying = false;
     Ok(())
+}
+
+fn complete_theme_in_command(app: &mut App) -> bool {
+    let prefix = "set theme=";
+    if !app.command_buffer.starts_with(prefix) {
+        return false;
+    }
+    let options = ["light", "dark", "solarized"];
+    let current = app.command_buffer[prefix.len()..].trim();
+    let next = if current.is_empty() {
+        options[0]
+    } else if let Some(pos) = options.iter().position(|opt| opt == &current) {
+        options[(pos + 1) % options.len()]
+    } else if let Some(found) = options.iter().find(|opt| opt.starts_with(current)) {
+        found
+    } else {
+        options[0]
+    };
+    app.command_buffer = format!("{}{}", prefix, next);
+    true
 }

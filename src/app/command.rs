@@ -5,6 +5,7 @@ use anyhow::Result;
 
 use super::types::{CommandPrompt, SearchSpec};
 use super::App;
+use super::Theme;
 
 impl App {
     pub(super) fn save(&mut self) -> Result<()> {
@@ -34,14 +35,14 @@ impl App {
     }
 
     pub(super) fn execute_command(&mut self) -> Result<bool> {
-        let input = self.command_buffer.trim();
+        let input = self.command_buffer.trim().to_string();
         if input.is_empty() {
             return Ok(false);
         }
 
         let mut parts = input.split_whitespace();
         let cmd = parts.next().unwrap_or("");
-        let arg = parts.next();
+        let arg = parts.next().map(|s| s.to_string());
 
         match cmd {
             "w" | "write" => {
@@ -71,7 +72,7 @@ impl App {
                 }
             }
             "set" => {
-                if let Some(setting) = arg {
+                if let Some(setting) = arg.as_deref() {
                     if let Some(value) = setting.strip_prefix("shiftwidth=") {
                         if let Ok(width) = value.parse::<usize>() {
                             if width > 0 {
@@ -82,6 +83,15 @@ impl App {
                             }
                         } else {
                             self.set_status("shiftwidth expects a number");
+                        }
+                        return Ok(false);
+                    }
+                    if let Some(value) = setting.strip_prefix("theme=") {
+                        if let Some(theme) = Theme::from_name(value) {
+                            self.set_theme_named(value, theme);
+                            self.set_status(format!("theme={}", self.theme_name));
+                        } else {
+                            self.set_status("Unknown theme (use light|dark|solarized)");
                         }
                         return Ok(false);
                     }
@@ -118,6 +128,12 @@ impl App {
                             };
                             self.set_status(value);
                         }
+                        "theme?" => {
+                            self.set_status(format!(
+                                "theme={} (light|dark|solarized)",
+                                self.theme_name
+                            ));
+                        }
                         "shiftwidth?" => {
                             self.set_status(format!("shiftwidth={}", self.shift_width));
                         }
@@ -141,7 +157,7 @@ impl App {
                     }
                 } else {
                     self.set_status(
-                        "Usage: :set findcross|nofindcross|shiftwidth=4|indentcolon|relativenumber",
+                        "Usage: :set findcross|nofindcross|shiftwidth=4|indentcolon|relativenumber|theme=dark",
                     );
                 }
             }

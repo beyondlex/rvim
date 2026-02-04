@@ -1242,7 +1242,11 @@ fn complete_set_in_command(app: &mut App, reverse: bool) -> bool {
             "set shiftwidth=4".to_string(),
             "set shiftwidth=8".to_string(),
         ]
-    } else if rest == "relativenumber" || rest == "norelativenumber" || rest == "rnu" || rest == "nornu" {
+    } else if rest == "relativenumber"
+        || rest == "norelativenumber"
+        || rest == "rnu"
+        || rest == "nornu"
+    {
         vec![
             "set relativenumber".to_string(),
             "set norelativenumber".to_string(),
@@ -1250,6 +1254,18 @@ fn complete_set_in_command(app: &mut App, reverse: bool) -> bool {
             "set nornu".to_string(),
             "set relativenumber?".to_string(),
             "set rnu?".to_string(),
+        ]
+    } else if rest == "findcross" || rest == "nofindcross" {
+        vec![
+            "set findcross".to_string(),
+            "set nofindcross".to_string(),
+            "set findcross?".to_string(),
+        ]
+    } else if rest == "indentcolon" || rest == "noindentcolon" {
+        vec![
+            "set indentcolon".to_string(),
+            "set noindentcolon".to_string(),
+            "set indentcolon?".to_string(),
         ]
     } else {
         vec![

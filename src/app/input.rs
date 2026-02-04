@@ -132,6 +132,12 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
 
     match app.mode {
         Mode::Normal => match (key.code, key.modifiers) {
+            (KeyCode::Esc, _) => {
+                app.operator_pending = None;
+                app.pending_textobj = None;
+                app.pending_find = None;
+                app.pending_g = false;
+            }
             (KeyCode::Char('.'), KeyModifiers::NONE) => {
                 replay_last_change(app)?;
                 return Ok(false);

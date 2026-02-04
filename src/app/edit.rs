@@ -69,6 +69,8 @@ impl App {
             completion_candidates: Vec::new(),
             completion_index: None,
             completion_cmd_prefix: None,
+            completion_anchor_fixed: false,
+            completion_anchor_col: None,
         }
     }
 
@@ -187,6 +189,8 @@ impl App {
         self.completion_candidates.clear();
         self.completion_index = None;
         self.completion_cmd_prefix = None;
+        self.completion_anchor_fixed = false;
+        self.completion_anchor_col = None;
     }
 
     pub fn apply_config(&mut self, config: &super::config::Config) {

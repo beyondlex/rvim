@@ -1368,6 +1368,8 @@ fn complete_path_in_command(app: &mut App, reverse: bool) -> bool {
     app.completion_candidates = matches;
     app.completion_index = Some(0);
     app.completion_cmd_prefix = Some(cmd_prefix.to_string());
+    app.completion_anchor_fixed = path_part.is_empty();
+    app.completion_anchor_col = Some(cmd_prefix.chars().count() as u16);
     let first = app.completion_candidates[0].clone();
     app.command_buffer = format!("{}{}", cmd_prefix, first);
     true

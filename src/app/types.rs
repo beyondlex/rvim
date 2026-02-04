@@ -97,6 +97,8 @@ pub struct App {
     pub(crate) completion_candidates: Vec<String>,
     pub(crate) completion_index: Option<usize>,
     pub(crate) completion_cmd_prefix: Option<String>,
+    pub(crate) completion_anchor_fixed: bool,
+    pub(crate) completion_anchor_col: Option<u16>,
 }
 
 #[derive(Debug, Clone, Copy)]

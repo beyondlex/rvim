@@ -333,6 +333,11 @@ fn unescape_display(input: &str) -> String {
 
 fn completion_anchor_x(app: &App, message_area: Rect) -> u16 {
     let cmd = app.command_buffer.as_str();
+    if app.completion_anchor_fixed && (cmd.starts_with("e") || cmd.starts_with("edit")) {
+        if let Some(offset) = app.completion_anchor_col {
+            return message_area.x + 1 + offset;
+        }
+    }
     let path_part = if cmd == "e" {
         ""
     } else if let Some(rest) = cmd.strip_prefix("e ") {

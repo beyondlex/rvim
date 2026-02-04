@@ -1216,6 +1216,8 @@ fn complete_set_in_command(app: &mut App, reverse: bool) -> bool {
     let rest = app.command_buffer.strip_prefix("set").unwrap_or("").trim_start();
     let prefix = if rest.starts_with("theme=") {
         "set theme="
+    } else if rest.starts_with("shiftwidth=") {
+        "set shiftwidth="
     } else {
         "set "
     };
@@ -1225,6 +1227,12 @@ fn complete_set_in_command(app: &mut App, reverse: bool) -> bool {
             "set theme=light",
             "set theme=dark",
             "set theme=solarized",
+        ]
+    } else if rest.starts_with("shiftwidth=") {
+        vec![
+            "set shiftwidth=2",
+            "set shiftwidth=4",
+            "set shiftwidth=8",
         ]
     } else {
         vec![

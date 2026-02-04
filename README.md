@@ -32,7 +32,7 @@ current_line_bg = "#464646"
 
 ## Logs
 
-Fatal panics are appended to:
+Panics and runtime errors (e.g. save failures) are appended to:
 
 ```
 ~/.config/rvim/rvim.log

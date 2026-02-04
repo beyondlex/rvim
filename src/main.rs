@@ -59,7 +59,8 @@ fn main() -> Result<()> {
         if event::poll(Duration::from_millis(50))? {
             match event::read()? {
                 Event::Key(key) => {
-                    if handle_key(&mut app, key)? {
+                    let should_quit = with_error_logging(&mut app, handle_key(&mut app, key), "input")?;
+                    if should_quit {
                         break;
                     }
                 }
@@ -91,4 +92,33 @@ fn install_panic_logger() {
             let _ = writeln!(file, "[{:?}] panic: {}", ts, info);
         }
     }));
+}
+
+fn append_log(message: &str) {
+    let Some(home) = std::env::var_os("HOME") else {
+        return;
+    };
+    let mut path = PathBuf::from(home);
+    path.push(".config/rvim");
+    let _ = fs::create_dir_all(&path);
+    path.push("rvim.log");
+    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
+        let ts = SystemTime::now();
+        let _ = writeln!(file, "[{:?}] error: {}", ts, message);
+    }
+}
+
+fn with_error_logging<T>(
+    mut app: &mut App,
+    result: Result<T>,
+    context: &str,
+) -> Result<T> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(err) => {
+            append_log(&format!("{}: {}", context, err));
+            app.set_status(format!("{}: {}", context, err));
+            Err(err)
+        }
+    }
 }

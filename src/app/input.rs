@@ -1223,35 +1223,52 @@ fn complete_set_in_command(app: &mut App, reverse: bool) -> bool {
     };
 
     let options = if rest.starts_with("theme=") {
-        vec![
-            "set theme=light",
-            "set theme=dark",
-            "set theme=solarized",
-        ]
+        let mut themes = vec!["light".to_string(), "dark".to_string(), "solarized".to_string()];
+        if let Some(overrides) = app.theme_overrides.as_ref() {
+            for name in overrides.keys() {
+                if !themes.iter().any(|t| t == name) {
+                    themes.push(name.clone());
+                }
+            }
+        }
+        themes.sort();
+        themes
+            .into_iter()
+            .map(|name| format!("set theme={}", name))
+            .collect()
     } else if rest.starts_with("shiftwidth=") {
         vec![
-            "set shiftwidth=2",
-            "set shiftwidth=4",
-            "set shiftwidth=8",
+            "set shiftwidth=2".to_string(),
+            "set shiftwidth=4".to_string(),
+            "set shiftwidth=8".to_string(),
+        ]
+    } else if rest == "relativenumber" || rest == "norelativenumber" || rest == "rnu" || rest == "nornu" {
+        vec![
+            "set relativenumber".to_string(),
+            "set norelativenumber".to_string(),
+            "set rnu".to_string(),
+            "set nornu".to_string(),
+            "set relativenumber?".to_string(),
+            "set rnu?".to_string(),
         ]
     } else {
         vec![
-            "set findcross",
-            "set nofindcross",
-            "set findcross?",
-            "set shiftwidth=",
-            "set shiftwidth?",
-            "set indentcolon",
-            "set noindentcolon",
-            "set indentcolon?",
-            "set relativenumber",
-            "set norelativenumber",
-            "set relativenumber?",
-            "set rnu",
-            "set nornu",
-            "set rnu?",
-            "set theme=",
-            "set theme?",
+            "set findcross".to_string(),
+            "set nofindcross".to_string(),
+            "set findcross?".to_string(),
+            "set shiftwidth=".to_string(),
+            "set shiftwidth?".to_string(),
+            "set indentcolon".to_string(),
+            "set noindentcolon".to_string(),
+            "set indentcolon?".to_string(),
+            "set relativenumber".to_string(),
+            "set norelativenumber".to_string(),
+            "set relativenumber?".to_string(),
+            "set rnu".to_string(),
+            "set nornu".to_string(),
+            "set rnu?".to_string(),
+            "set theme=".to_string(),
+            "set theme?".to_string(),
         ]
     };
 

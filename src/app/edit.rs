@@ -56,6 +56,7 @@ impl App {
             command_prompt: CommandPrompt::Command,
             command_history: Vec::new(),
             command_history_index: None,
+            command_candidates: default_command_candidates(),
             last_search: None,
             search_history: Vec::new(),
             search_history_index: None,
@@ -193,6 +194,14 @@ impl App {
         self.completion_cmd_prefix = None;
         self.completion_anchor_fixed = false;
         self.completion_anchor_col = None;
+    }
+
+    pub fn register_command_candidate(&mut self, name: impl Into<String>) {
+        let name = name.into();
+        if !self.command_candidates.iter().any(|c| c == &name) {
+            self.command_candidates.push(name);
+            self.command_candidates.sort();
+        }
     }
 
     pub fn apply_config(&mut self, config: &super::config::Config) {
@@ -1572,6 +1581,37 @@ impl App {
             .map(|l| l.chars().count())
             .unwrap_or(0)
     }
+}
+
+fn default_command_candidates() -> Vec<String> {
+    vec![
+        "w",
+        "write",
+        "q",
+        "quit",
+        "q!",
+        "quit!",
+        "wq",
+        "x",
+        "e",
+        "edit",
+        "set",
+        "ls",
+        "buffers",
+        "b",
+        "buffer",
+        "bn",
+        "bnext",
+        "bp",
+        "bprev",
+        "bd",
+        "bdelete",
+        "bd!",
+        "bdelete!",
+    ]
+    .into_iter()
+    .map(|s| s.to_string())
+    .collect()
 }
 
 impl App {

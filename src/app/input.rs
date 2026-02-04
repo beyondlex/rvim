@@ -1493,8 +1493,8 @@ fn complete_command_in_command(app: &mut App, reverse: bool) -> bool {
     }
 
     let current = app.command_buffer.as_str();
-    let options = command_candidates();
-    let mut matches: Vec<String> = options
+    let mut matches: Vec<String> = app
+        .command_candidates
         .iter()
         .filter(|opt| opt.starts_with(current))
         .map(|opt| opt.to_string())
@@ -1538,34 +1538,6 @@ fn complete_command_in_command(app: &mut App, reverse: bool) -> bool {
     let first = app.completion_candidates[0].clone();
     app.command_buffer = first;
     true
-}
-
-fn command_candidates() -> &'static [&'static str] {
-    &[
-        "w",
-        "write",
-        "q",
-        "quit",
-        "q!",
-        "quit!",
-        "wq",
-        "x",
-        "e",
-        "edit",
-        "set",
-        "ls",
-        "buffers",
-        "b",
-        "buffer",
-        "bn",
-        "bnext",
-        "bp",
-        "bprev",
-        "bd",
-        "bdelete",
-        "bd!",
-        "bdelete!",
-    ]
 }
 
 fn expand_tilde(input: &str) -> (String, bool) {

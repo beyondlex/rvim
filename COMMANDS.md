@@ -6,6 +6,8 @@ This document summarizes the currently supported normal/command mode features.
 
 Enter command mode with `:` then press Enter to execute.
 
+Command completion: in command mode, `Tab`/`Shift-Tab` cycles completion for commands and options.
+
 ### File commands
 
 - `:w` / `:write` — save (use `:w <path>` if no file name)

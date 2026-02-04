@@ -84,6 +84,7 @@ pub struct App {
     pub(crate) command_prompt: CommandPrompt,
     pub(crate) command_history: Vec<String>,
     pub(crate) command_history_index: Option<usize>,
+    pub(crate) command_candidates: Vec<String>,
     pub(crate) last_search: Option<SearchSpec>,
     pub(crate) search_history: Vec<String>,
     pub(crate) search_history_index: Option<usize>,

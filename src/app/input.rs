@@ -1213,65 +1213,93 @@ fn complete_set_in_command(app: &mut App, reverse: bool) -> bool {
     if !app.command_buffer.starts_with("set") {
         return false;
     }
-    let mut rest = app.command_buffer.strip_prefix("set").unwrap_or("").trim_start();
-    if rest.starts_with("theme=") {
-        let prefix = "set theme=";
-        let options = ["light", "dark", "solarized"];
-        let current = app.command_buffer[prefix.len()..].trim();
-        let next = if current.is_empty() {
-            options[0]
-        } else if let Some(pos) = options.iter().position(|opt| opt == &current) {
-            if reverse {
-                options[(pos + options.len() - 1) % options.len()]
-            } else {
-                options[(pos + 1) % options.len()]
-            }
-        } else if let Some(found) = options.iter().find(|opt| opt.starts_with(current)) {
-            found
-        } else {
-            options[0]
-        };
-        app.command_buffer = format!("{}{}", prefix, next);
-        return true;
-    }
-
-    let options = [
-        "findcross",
-        "nofindcross",
-        "findcross?",
-        "shiftwidth=",
-        "shiftwidth?",
-        "indentcolon",
-        "noindentcolon",
-        "indentcolon?",
-        "relativenumber",
-        "norelativenumber",
-        "relativenumber?",
-        "rnu",
-        "nornu",
-        "rnu?",
-        "theme=",
-        "theme?",
-    ];
-
-    if rest.is_empty() {
-        app.command_buffer = format!("set {}", options[0]);
-        return true;
-    }
-
-    let current = rest;
-    let next = if let Some(pos) = options.iter().position(|opt| opt == &current) {
-        if reverse {
-            options[(pos + options.len() - 1) % options.len()]
-        } else {
-            options[(pos + 1) % options.len()]
-        }
-    } else if let Some(found) = options.iter().find(|opt| opt.starts_with(current)) {
-        found
+    let rest = app.command_buffer.strip_prefix("set").unwrap_or("").trim_start();
+    let prefix = if rest.starts_with("theme=") {
+        "set theme="
     } else {
-        options[0]
+        "set "
     };
-    app.command_buffer = format!("set {}", next);
+
+    let options = if rest.starts_with("theme=") {
+        vec![
+            "set theme=light",
+            "set theme=dark",
+            "set theme=solarized",
+        ]
+    } else {
+        vec![
+            "set findcross",
+            "set nofindcross",
+            "set findcross?",
+            "set shiftwidth=",
+            "set shiftwidth?",
+            "set indentcolon",
+            "set noindentcolon",
+            "set indentcolon?",
+            "set relativenumber",
+            "set norelativenumber",
+            "set relativenumber?",
+            "set rnu",
+            "set nornu",
+            "set rnu?",
+            "set theme=",
+            "set theme?",
+        ]
+    };
+
+    let mut matches: Vec<String> = options
+        .into_iter()
+        .filter(|opt| opt.starts_with(app.command_buffer.as_str()))
+        .map(|opt| opt.to_string())
+        .collect();
+    if matches.is_empty() && rest.is_empty() {
+        matches = vec![
+            "set findcross".to_string(),
+            "set nofindcross".to_string(),
+            "set shiftwidth=".to_string(),
+            "set indentcolon".to_string(),
+            "set relativenumber".to_string(),
+            "set theme=".to_string(),
+        ];
+    }
+    if matches.is_empty() {
+        app.clear_completion();
+        return false;
+    }
+    matches.sort();
+
+    let should_cycle = app
+        .completion_cmd_prefix
+        .as_deref()
+        .is_some_and(|p| p == "<set>")
+        && app
+            .completion_candidates
+            .iter()
+            .any(|candidate| candidate == app.command_buffer.as_str());
+    if should_cycle {
+        let next_idx = match app.completion_index {
+            Some(idx) => {
+                if reverse {
+                    (idx + app.completion_candidates.len() - 1) % app.completion_candidates.len()
+                } else {
+                    (idx + 1) % app.completion_candidates.len()
+                }
+            }
+            None => 0,
+        };
+        app.completion_index = Some(next_idx);
+        let next = app.completion_candidates[next_idx].clone();
+        app.command_buffer = next;
+        return true;
+    }
+
+    app.completion_candidates = matches;
+    app.completion_index = Some(0);
+    app.completion_cmd_prefix = Some("<set>".to_string());
+    app.completion_anchor_fixed = true;
+    app.completion_anchor_col = Some(prefix.chars().count() as u16);
+    let first = app.completion_candidates[0].clone();
+    app.command_buffer = first;
     true
 }
 

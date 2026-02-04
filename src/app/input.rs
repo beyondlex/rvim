@@ -699,12 +699,18 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.clear_completion();
             }
             (KeyCode::Tab, _) => {
-                if complete_path_in_command(app, false) || complete_set_in_command(app, false) {
+                if complete_path_in_command(app, false)
+                    || complete_set_in_command(app, false)
+                    || complete_command_in_command(app, false)
+                {
                     app.search_history_index = None;
                 }
             }
             (KeyCode::BackTab, _) => {
-                if complete_path_in_command(app, true) || complete_set_in_command(app, true) {
+                if complete_path_in_command(app, true)
+                    || complete_set_in_command(app, true)
+                    || complete_command_in_command(app, true)
+                {
                     app.search_history_index = None;
                 }
             }
@@ -1407,6 +1413,90 @@ fn complete_path_in_command(app: &mut App, reverse: bool) -> bool {
     let first = app.completion_candidates[0].clone();
     app.command_buffer = format!("{}{}", cmd_prefix, first);
     true
+}
+
+fn complete_command_in_command(app: &mut App, reverse: bool) -> bool {
+    if !matches!(app.command_prompt, CommandPrompt::Command) {
+        return false;
+    }
+    if app.command_buffer.contains(' ') {
+        return false;
+    }
+
+    let current = app.command_buffer.as_str();
+    let options = command_candidates();
+    let mut matches: Vec<String> = options
+        .iter()
+        .filter(|opt| opt.starts_with(current))
+        .map(|opt| opt.to_string())
+        .collect();
+    if matches.is_empty() {
+        app.clear_completion();
+        return false;
+    }
+    matches.sort();
+
+    let should_cycle = app
+        .completion_cmd_prefix
+        .as_deref()
+        .is_some_and(|prefix| prefix == "<cmd>")
+        && app
+            .completion_candidates
+            .iter()
+            .any(|candidate| candidate == current);
+    if should_cycle {
+        let next_idx = match app.completion_index {
+            Some(idx) => {
+                if reverse {
+                    (idx + app.completion_candidates.len() - 1) % app.completion_candidates.len()
+                } else {
+                    (idx + 1) % app.completion_candidates.len()
+                }
+            }
+            None => 0,
+        };
+        app.completion_index = Some(next_idx);
+        let next = app.completion_candidates[next_idx].clone();
+        app.command_buffer = next;
+        return true;
+    }
+
+    app.completion_candidates = matches;
+    app.completion_index = Some(0);
+    app.completion_cmd_prefix = Some("<cmd>".to_string());
+    app.completion_anchor_fixed = true;
+    app.completion_anchor_col = Some(current.chars().count() as u16);
+    let first = app.completion_candidates[0].clone();
+    app.command_buffer = first;
+    true
+}
+
+fn command_candidates() -> &'static [&'static str] {
+    &[
+        "w",
+        "write",
+        "q",
+        "quit",
+        "q!",
+        "quit!",
+        "wq",
+        "x",
+        "e",
+        "edit",
+        "set",
+        "ls",
+        "buffers",
+        "b",
+        "buffer",
+        "bn",
+        "bnext",
+        "bp",
+        "bprev",
+        "bd",
+        "bdelete",
+        "bd!",
+        "bdelete!",
+    ]
 }
 
 fn expand_tilde(input: &str) -> (String, bool) {

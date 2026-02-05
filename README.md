@@ -22,6 +22,13 @@ Tree-sitter based highlighting is enabled for:
 Queries are loaded from `queries/<lang>/highlights.scm` first, falling back to built-ins
 when available.
 
+## Recent changes (last 5 hours)
+
+- Added Tree-sitter syntax highlighting (Rust + multi-language queries).
+- Updated Tree-sitter core/grammar versions and fixed initialization quirks.
+- Improved TypeScript/TSX query compatibility.
+- Added tilde expansion for `:e` paths.
+
 To add or override a language, place a `highlights.scm` file under:
 
 ```

@@ -216,7 +216,8 @@ impl SyntaxState {
             .set_language(&spec.language)
             .context("set language")?;
         let query_key = query.key.clone();
-        let query = Query::new(&spec.language, &query.text).context("compile query")?;
+        let query = Query::new(&spec.language, &query.text)
+            .map_err(|err| anyhow::anyhow!("compile query: {}", err))?;
         Ok(Self {
             language_name: spec.name,
             query_key,

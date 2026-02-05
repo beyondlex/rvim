@@ -77,6 +77,7 @@ Checklist:
 - [ ] LSP client (tower-lsp)
 - [x] Syntax highlighting (tree-sitter)
 - [ ] File explorer
+- [ ] Incremental parsing (tree.edit + parser.parse(old_tree)) for large files
 
 ## Implementation Notes (recent)
 - Bracketed paste enabled for faster Insert-mode paste.

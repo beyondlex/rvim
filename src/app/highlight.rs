@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use tree_sitter::{Language, Parser, Query, QueryCursor, Tree};
+use tree_sitter::{Language, Parser, Query, QueryCursor, Tree, StreamingIterator};
 
 use super::App;
 
@@ -113,8 +113,13 @@ pub(crate) fn syntax_spans_for_state(
     cursor.set_byte_range(start_byte..end_byte);
     let mut out: HashMap<usize, Vec<SyntaxSpan>> = HashMap::new();
     let root = tree.root_node();
-    for (m, idx) in cursor.captures(&state.query, root, state.source.as_bytes()) {
-        let capture = &m.captures[idx];
+    let mut captures = cursor.captures(&state.query, root, state.source.as_bytes());
+    loop {
+        captures.advance();
+        let Some((m, idx)) = captures.get() else {
+            break;
+        };
+        let capture = &m.captures[*idx];
         let name = state.query.capture_names()[capture.index as usize];
         let Some(kind) = capture_to_kind(name) else {
             continue;

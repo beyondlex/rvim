@@ -8,7 +8,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::app::{App, CommandPrompt, Mode, VisualSelection, VisualSelectionKind};
-use crate::app::types::char_to_screen_col;
+use crate::app::{char_display_width, char_to_screen_col, line_screen_width};
 
 pub fn apply_cursor_style(app: &App) -> Result<()> {
     match app.mode {
@@ -47,10 +47,11 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
     for i in 0..viewport_rows {
         let idx = app.scroll_row + i;
         if let Some(line) = app.lines.get(idx) {
+            let scroll_screen = char_to_screen_col(line, app.scroll_col, app.shift_width);
             text_lines.push(render_line_with_selection(
                 line,
                 idx,
-                app.scroll_col,
+                scroll_screen,
                 viewport_cols,
                 selection,
                 app.last_search.as_ref().map(|s| s.pattern.as_str()),
@@ -384,13 +385,34 @@ fn render_line_with_selection(
     app: &App,
 ) -> Line<'static> {
     let mut spans: Vec<Span> = Vec::new();
-    let mut col = 0;
+    let mut col = 0usize;
+    let mut screen_col = 0usize;
     let mut buf = String::new();
     let mut buf_state = 0u8;
 
     let search_matches = search_pattern
         .and_then(|pat| build_search_mask(line, pat))
         .unwrap_or_default();
+
+    let block_range = match selection {
+        Some(sel) => match sel.kind {
+            VisualSelectionKind::Block { start, end } => {
+                let base_line = app.lines.get(start.0).map(|s| s.as_str()).unwrap_or("");
+                let start_sc = char_to_screen_col(base_line, start.1, app.shift_width);
+                let end_sc = char_to_screen_col(base_line, end.1, app.shift_width);
+                let end_char = base_line.chars().nth(end.1).unwrap_or(' ');
+                let end_w = char_display_width(end_char, end_sc, app.shift_width);
+                let (a, b) = if start_sc <= end_sc {
+                    (start_sc, end_sc.saturating_add(end_w))
+                } else {
+                    (end_sc, start_sc.saturating_add(end_w))
+                };
+                Some((a, b))
+            }
+            _ => None,
+        },
+        None => None,
+    };
 
     let number = if relative_number && line_idx != cursor_row {
         line_idx.abs_diff(cursor_row)
@@ -407,7 +429,7 @@ fn render_line_with_selection(
     },
 ));
 
-    let mut is_selected = |c: usize| -> bool {
+    let mut is_selected = |c: usize, sc: usize, w: usize| -> bool {
         let selection = match selection {
             Some(r) => r,
             None => return false,
@@ -433,14 +455,22 @@ fn render_line_with_selection(
             }
             VisualSelectionKind::Block { start, end } => {
                 let within_line = line_idx >= start.0 && line_idx <= end.0;
-                within_line && c >= start.1 && c <= end.1
+                if !within_line {
+                    return false;
+                }
+                if let Some((block_start, block_end)) = block_range {
+                    sc < block_end && sc.saturating_add(w) > block_start
+                } else {
+                    false
+                }
             }
         }
     };
 
     for ch in line.chars() {
-        if col >= start_col && (col - start_col) < max_cols {
-            let selected = is_selected(col);
+        let width = char_display_width(ch, screen_col, app.shift_width);
+        if screen_col + width > start_col && screen_col < start_col + max_cols {
+            let selected = is_selected(col, screen_col, width);
             let matched = search_matches.get(col).copied().unwrap_or(false);
             let state = if selected {
                 3
@@ -464,7 +494,8 @@ fn render_line_with_selection(
             }
         }
         col += 1;
-        if (col.saturating_sub(start_col)) >= max_cols {
+        screen_col += width;
+        if screen_col >= start_col + max_cols {
             break;
         }
     }
@@ -474,7 +505,7 @@ fn render_line_with_selection(
     }
 
     if is_current_line {
-        let line_len = line.chars().count();
+        let line_len = line_screen_width(line, app.shift_width);
         let rendered = line_len.saturating_sub(start_col).min(max_cols);
         let pad = max_cols.saturating_sub(rendered);
         if pad > 0 {

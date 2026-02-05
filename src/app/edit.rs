@@ -4,9 +4,9 @@ use super::motion::char_count_in_range;
 use crossterm::event::{KeyCode, KeyModifiers};
 
 use super::types::{
-    char_class, char_to_byte_idx, normalize_range, CharClass, CommandPrompt, EditorState,
-    LastVisual, LineUndo, Mode, Operator, OperatorPending, RepeatKey, VisualSelection,
-    VisualSelectionKind, YankType,
+    char_class, char_to_byte_idx, char_to_screen_col, normalize_range, screen_col_to_char_idx,
+    CharClass, CommandPrompt, EditorState, LastVisual, LineUndo, Mode, Operator, OperatorPending,
+    RepeatKey, VisualSelection, VisualSelectionKind, YankType, char_display_width,
 };
 use super::App;
 
@@ -249,10 +249,14 @@ impl App {
             self.scroll_row = self.cursor_row.saturating_sub(viewport_rows - 1);
         }
 
-        if self.cursor_col < self.scroll_col {
-            self.scroll_col = self.cursor_col;
-        } else if self.cursor_col >= self.scroll_col + viewport_cols {
-            self.scroll_col = self.cursor_col.saturating_sub(viewport_cols - 1);
+        let line = self.lines.get(self.cursor_row).map(|s| s.as_str()).unwrap_or("");
+        let cursor_screen = char_to_screen_col(line, self.cursor_col, self.shift_width);
+        let scroll_screen = char_to_screen_col(line, self.scroll_col, self.shift_width);
+        if cursor_screen < scroll_screen {
+            self.scroll_col = screen_col_to_char_idx(line, cursor_screen, self.shift_width);
+        } else if cursor_screen >= scroll_screen + viewport_cols {
+            let target = cursor_screen.saturating_sub(viewport_cols - 1);
+            self.scroll_col = screen_col_to_char_idx(line, target, self.shift_width);
         }
     }
 
@@ -290,7 +294,17 @@ impl App {
             VisualSelectionKind::Line(start, end) => format!("{} lines", end - start + 1),
             VisualSelectionKind::Block { start, end } => {
                 let rows = end.0 - start.0 + 1;
-                let cols = end.1.saturating_sub(start.1) + 1;
+                let base_line = self.lines.get(start.0).map(|s| s.as_str()).unwrap_or("");
+                let start_sc = char_to_screen_col(base_line, start.1, self.shift_width);
+                let end_sc = char_to_screen_col(base_line, end.1, self.shift_width);
+                let end_char = base_line.chars().nth(end.1).unwrap_or(' ');
+                let end_w = char_display_width(end_char, end_sc, self.shift_width);
+                let (a, b) = if start_sc <= end_sc {
+                    (start_sc, end_sc.saturating_add(end_w))
+                } else {
+                    (end_sc, start_sc.saturating_add(end_w))
+                };
+                let cols = b.saturating_sub(a).max(1);
                 format!("{}x{}", rows, cols)
             }
         };

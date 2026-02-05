@@ -263,7 +263,7 @@ pub(crate) fn byte_to_char_idx(s: &str, byte_idx: usize) -> usize {
     count
 }
 
-pub(crate) fn line_screen_width(s: &str, tab_width: usize) -> usize {
+pub fn line_screen_width(s: &str, tab_width: usize) -> usize {
     let mut col = 0usize;
     for ch in s.chars() {
         col += char_display_width(ch, col, tab_width);
@@ -271,7 +271,7 @@ pub(crate) fn line_screen_width(s: &str, tab_width: usize) -> usize {
     col
 }
 
-pub(crate) fn char_to_screen_col(s: &str, char_idx: usize, tab_width: usize) -> usize {
+pub fn char_to_screen_col(s: &str, char_idx: usize, tab_width: usize) -> usize {
     let mut col = 0usize;
     for (i, ch) in s.chars().enumerate() {
         if i >= char_idx {
@@ -294,7 +294,7 @@ pub(crate) fn screen_col_to_char_idx(s: &str, screen_col: usize, tab_width: usiz
     s.chars().count()
 }
 
-pub(crate) fn char_display_width(ch: char, col: usize, tab_width: usize) -> usize {
+pub fn char_display_width(ch: char, col: usize, tab_width: usize) -> usize {
     if ch == '\t' {
         let width = tab_width.max(1);
         return width - (col % width);

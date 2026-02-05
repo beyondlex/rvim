@@ -1540,7 +1540,7 @@ fn complete_command_in_command(app: &mut App, reverse: bool) -> bool {
     true
 }
 
-fn expand_tilde(input: &str) -> (String, bool) {
+pub(crate) fn expand_tilde(input: &str) -> (String, bool) {
     if !input.starts_with('~') {
         return (input.to_string(), false);
     }
@@ -1554,6 +1554,18 @@ fn expand_tilde(input: &str) -> (String, bool) {
         return (format!("{}/{}", home, rest), true);
     }
     (input.to_string(), false)
+}
+
+pub(crate) fn expand_tilde_path(input: impl AsRef<str>) -> String {
+    let input = input.as_ref();
+    let trimmed = input.trim();
+    let (quote, rest) = strip_leading_quote(trimmed);
+    let (expanded, _had_tilde) = expand_tilde(rest);
+    if quote.is_some() {
+        format!("{}{}", quote.unwrap(), expanded)
+    } else {
+        expanded
+    }
 }
 
 fn strip_leading_quote(input: &str) -> (Option<char>, &str) {

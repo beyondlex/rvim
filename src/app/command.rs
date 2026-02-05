@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 
 use super::types::{BufferSlot, BufferState, CommandPrompt, SearchSpec};
+use super::input::expand_tilde_path;
 use super::App;
 use super::Theme;
 
@@ -270,7 +271,7 @@ impl App {
                 return Ok(true);
             }
             "e" | "edit" => {
-                if let Some(path) = arg.map(PathBuf::from) {
+                if let Some(path) = arg.map(expand_tilde_path).map(PathBuf::from) {
                     self.open_or_switch_buffer(path)?;
                 } else {
                     self.set_status("Usage: :e <path>");

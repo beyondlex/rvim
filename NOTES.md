@@ -36,3 +36,9 @@ Quick index for next session.
 ## Open ideas
 - Extend counts to more motions (optional).
 - Add theme config for more UI parts (if needed).
+
+## Recent changes (last 5 hours)
+- Added Tree-sitter syntax highlighting (Rust + multi-language queries).
+- Updated Tree-sitter core/grammar versions and fixed initialization quirks.
+- Improved TypeScript/TSX query compatibility.
+- Added tilde expansion for `:e` paths.

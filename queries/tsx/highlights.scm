@@ -202,18 +202,6 @@
   "with"
   "yield"
 ] @keyword
-(formal_parameters
-  [
-    (identifier) @variable.parameter
-    (array_pattern
-      (identifier) @variable.parameter)
-    (object_pattern
-      [
-        (pair_pattern value: (identifier) @variable.parameter)
-        (shorthand_property_identifier_pattern) @variable.parameter
-      ])
-  ]
-)
 (jsx_opening_element (identifier) @tag (#match? @tag "^[a-z][^.]*$"))
 (jsx_closing_element (identifier) @tag (#match? @tag "^[a-z][^.]*$"))
 (jsx_self_closing_element (identifier) @tag (#match? @tag "^[a-z][^.]*$"))

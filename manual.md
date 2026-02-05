@@ -44,3 +44,4 @@
 ## Syntax Highlighting (Tree-sitter)
 - Open `src/main.rs` and verify identifiers/types are colored.
 - If highlighting is missing, ensure `queries/rust/highlights.scm` exists.
+- Try other languages (js/ts/tsx/json/toml/md/html/css/py/lua/go) and verify colors appear.

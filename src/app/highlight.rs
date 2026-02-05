@@ -249,6 +249,72 @@ fn language_specs() -> Vec<LanguageSpec> {
             language: tree_sitter_rust::LANGUAGE.into(),
             default_query: Some(RUST_QUERY),
         },
+        LanguageSpec {
+            name: "javascript",
+            extensions: &["js", "mjs", "cjs", "jsx"],
+            language: tree_sitter_javascript::LANGUAGE.into(),
+            default_query: None,
+        },
+        LanguageSpec {
+            name: "typescript",
+            extensions: &["ts"],
+            language: tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            default_query: None,
+        },
+        LanguageSpec {
+            name: "tsx",
+            extensions: &["tsx"],
+            language: tree_sitter_typescript::LANGUAGE_TSX.into(),
+            default_query: None,
+        },
+        LanguageSpec {
+            name: "json",
+            extensions: &["json"],
+            language: tree_sitter_json::LANGUAGE.into(),
+            default_query: None,
+        },
+        LanguageSpec {
+            name: "toml",
+            extensions: &["toml"],
+            language: tree_sitter_toml::LANGUAGE.into(),
+            default_query: None,
+        },
+        LanguageSpec {
+            name: "markdown",
+            extensions: &["md", "markdown", "mdx"],
+            language: tree_sitter_md::LANGUAGE.into(),
+            default_query: None,
+        },
+        LanguageSpec {
+            name: "html",
+            extensions: &["html", "htm"],
+            language: tree_sitter_html::LANGUAGE.into(),
+            default_query: None,
+        },
+        LanguageSpec {
+            name: "css",
+            extensions: &["css", "scss"],
+            language: tree_sitter_css::LANGUAGE.into(),
+            default_query: None,
+        },
+        LanguageSpec {
+            name: "python",
+            extensions: &["py"],
+            language: tree_sitter_python::LANGUAGE.into(),
+            default_query: None,
+        },
+        LanguageSpec {
+            name: "lua",
+            extensions: &["lua"],
+            language: tree_sitter_lua::LANGUAGE.into(),
+            default_query: None,
+        },
+        LanguageSpec {
+            name: "go",
+            extensions: &["go"],
+            language: tree_sitter_go::LANGUAGE.into(),
+            default_query: None,
+        },
     ]
 }
 

@@ -15,8 +15,12 @@ cargo run -- path/to/file
 
 ## Syntax highlighting
 
-Tree-sitter based highlighting is enabled for Rust (`.rs`) files. Queries are
-loaded from `queries/<lang>/highlights.scm` first, falling back to built-ins.
+Tree-sitter based highlighting is enabled for:
+
+- Rust, JavaScript, TypeScript, TSX, JSON, TOML, Markdown, HTML, CSS, Python, Lua, Go
+
+Queries are loaded from `queries/<lang>/highlights.scm` first, falling back to built-ins
+when available.
 
 To add or override a language, place a `highlights.scm` file under:
 

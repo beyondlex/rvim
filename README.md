@@ -13,6 +13,17 @@ This project is actively evolving. See `BLUEPRINT.md` for the roadmap and
 cargo run -- path/to/file
 ```
 
+## Syntax highlighting
+
+Tree-sitter based highlighting is enabled for Rust (`.rs`) files. Queries are
+loaded from `queries/<lang>/highlights.scm` first, falling back to built-ins.
+
+To add or override a language, place a `highlights.scm` file under:
+
+```
+queries/<lang>/highlights.scm
+```
+
 ## Config
 
 Configuration is loaded from the first existing file in this order:
@@ -28,6 +39,9 @@ theme = "dark"
 
 [themes.dark]
 current_line_bg = "#464646"
+syntax_keyword = "#569CD6"
+syntax_string = "#6A9955"
+syntax_comment = "#6A9955"
 ```
 
 ## Logs

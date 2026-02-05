@@ -44,6 +44,19 @@ pub(crate) struct ThemeOverride {
     pub(crate) selection_bg: Option<String>,
     pub(crate) search_fg: Option<String>,
     pub(crate) search_bg: Option<String>,
+    pub(crate) syntax_keyword: Option<String>,
+    pub(crate) syntax_string: Option<String>,
+    pub(crate) syntax_comment: Option<String>,
+    pub(crate) syntax_function: Option<String>,
+    pub(crate) syntax_type: Option<String>,
+    pub(crate) syntax_constant: Option<String>,
+    pub(crate) syntax_number: Option<String>,
+    pub(crate) syntax_operator: Option<String>,
+    pub(crate) syntax_property: Option<String>,
+    pub(crate) syntax_variable: Option<String>,
+    pub(crate) syntax_macro: Option<String>,
+    pub(crate) syntax_attribute: Option<String>,
+    pub(crate) syntax_punctuation: Option<String>,
 }
 
 pub(crate) fn apply_theme_overrides(theme: &mut Theme, overrides: &ThemeOverride) {
@@ -81,6 +94,45 @@ pub(crate) fn apply_theme_overrides(theme: &mut Theme, overrides: &ThemeOverride
     }
     if let Some(color) = overrides.search_bg.as_deref().and_then(parse_color) {
         theme.search_bg = color;
+    }
+    if let Some(color) = overrides.syntax_keyword.as_deref().and_then(parse_color) {
+        theme.syntax_keyword = color;
+    }
+    if let Some(color) = overrides.syntax_string.as_deref().and_then(parse_color) {
+        theme.syntax_string = color;
+    }
+    if let Some(color) = overrides.syntax_comment.as_deref().and_then(parse_color) {
+        theme.syntax_comment = color;
+    }
+    if let Some(color) = overrides.syntax_function.as_deref().and_then(parse_color) {
+        theme.syntax_function = color;
+    }
+    if let Some(color) = overrides.syntax_type.as_deref().and_then(parse_color) {
+        theme.syntax_type = color;
+    }
+    if let Some(color) = overrides.syntax_constant.as_deref().and_then(parse_color) {
+        theme.syntax_constant = color;
+    }
+    if let Some(color) = overrides.syntax_number.as_deref().and_then(parse_color) {
+        theme.syntax_number = color;
+    }
+    if let Some(color) = overrides.syntax_operator.as_deref().and_then(parse_color) {
+        theme.syntax_operator = color;
+    }
+    if let Some(color) = overrides.syntax_property.as_deref().and_then(parse_color) {
+        theme.syntax_property = color;
+    }
+    if let Some(color) = overrides.syntax_variable.as_deref().and_then(parse_color) {
+        theme.syntax_variable = color;
+    }
+    if let Some(color) = overrides.syntax_macro.as_deref().and_then(parse_color) {
+        theme.syntax_macro = color;
+    }
+    if let Some(color) = overrides.syntax_attribute.as_deref().and_then(parse_color) {
+        theme.syntax_attribute = color;
+    }
+    if let Some(color) = overrides.syntax_punctuation.as_deref().and_then(parse_color) {
+        theme.syntax_punctuation = color;
     }
 }
 

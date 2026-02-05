@@ -113,6 +113,7 @@ impl App {
             line_undo: None,
             is_restoring: false,
             change_tick: 0,
+            edit_tick: 0,
         };
         let current_state = self.capture_buffer_state();
         let current_id = self.current_buffer_id;
@@ -148,6 +149,8 @@ impl App {
                 self.line_undo = None;
                 self.is_restoring = false;
                 self.change_tick = 0;
+                self.edit_tick = 0;
+                self.syntax_by_buffer.remove(&target_id);
                 self.reset_transient_for_switch();
                 self.set_status("Closed buffer (new empty)");
                 return;
@@ -165,6 +168,7 @@ impl App {
             let replacement = self.buffers.swap_remove(idx);
             self.load_buffer_state(replacement.state);
             self.current_buffer_id = replacement.id;
+            self.syntax_by_buffer.remove(&target_id);
             self.reset_transient_for_switch();
             self.set_status(format!("Closed buffer {}, now {}", target_id, replacement_id));
             return;
@@ -181,6 +185,7 @@ impl App {
             return;
         }
         self.buffers.swap_remove(idx);
+        self.syntax_by_buffer.remove(&target_id);
         self.set_status(format!("Closed buffer {}", target_id));
     }
 
@@ -207,6 +212,7 @@ impl App {
         self.scroll_row = 0;
         self.scroll_col = 0;
         self.dirty = false;
+        self.edit_tick = self.edit_tick.wrapping_add(1);
         Ok(())
     }
 

@@ -7,7 +7,7 @@ use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-use crate::app::{App, CommandPrompt, Mode, VisualSelection, VisualSelectionKind};
+use crate::app::{App, CommandPrompt, HighlightKind, Mode, SyntaxSpan, VisualSelection, VisualSelectionKind, total_spans, detect_language_name, has_query_for_language};
 use crate::app::{char_display_width, char_to_screen_col, line_screen_width};
 
 pub fn apply_cursor_style(app: &App) -> Result<()> {
@@ -44,16 +44,20 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
 
     let mut text_lines: Vec<Line> = Vec::with_capacity(viewport_rows);
     let selection = app.visual_selection();
+    let syntax = app.syntax_spans_for_viewport(app.scroll_row, viewport_rows);
+    let debug_syntax = std::env::var("RVIM_DEBUG_SYNTAX").ok().as_deref() == Some("1");
     for i in 0..viewport_rows {
         let idx = app.scroll_row + i;
         if let Some(line) = app.lines.get(idx) {
             let scroll_screen = char_to_screen_col(line, app.scroll_col, app.shift_width);
+            let syntax_spans = syntax.as_ref().and_then(|m| m.get(&idx)).map(|v| v.as_slice());
             text_lines.push(render_line_with_selection(
                 line,
                 idx,
                 scroll_screen,
                 viewport_cols,
                 selection,
+                syntax_spans,
                 app.last_search.as_ref().map(|s| s.pattern.as_str()),
                 gutter_width,
                 idx == app.cursor_row,
@@ -100,6 +104,9 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
     status.push_str(&format!(" | theme:{}", app.theme_name));
     if app.mode == Mode::Command && app.command_buffer.starts_with("set theme=") {
         status.push_str(" | themes: light dark solarized");
+    }
+    if debug_syntax {
+        status.push_str(&format!(" | {} spans:{}", app.syntax_debug_summary(), total_spans(&syntax)));
     }
     if app.mode == Mode::Command
         && !app.completion_candidates.is_empty()
@@ -377,6 +384,7 @@ fn render_line_with_selection(
     start_col: usize,
     max_cols: usize,
     selection: Option<VisualSelection>,
+    syntax_spans: Option<&[SyntaxSpan]>,
     search_pattern: Option<&str>,
     gutter_width: usize,
     is_current_line: bool,
@@ -389,6 +397,9 @@ fn render_line_with_selection(
     let mut screen_col = 0usize;
     let mut buf = String::new();
     let mut buf_state = 0u8;
+    let mut buf_kind: Option<HighlightKind> = None;
+    let mut syntax_idx = 0usize;
+    let syntax = syntax_spans.unwrap_or(&[]);
 
     let search_matches = search_pattern
         .and_then(|pat| build_search_mask(line, pat))
@@ -468,6 +479,17 @@ fn render_line_with_selection(
     };
 
     for ch in line.chars() {
+        while syntax_idx < syntax.len() && col >= syntax[syntax_idx].end_col {
+            syntax_idx += 1;
+        }
+        let kind = if syntax_idx < syntax.len()
+            && col >= syntax[syntax_idx].start_col
+            && col < syntax[syntax_idx].end_col
+        {
+            Some(syntax[syntax_idx].kind)
+        } else {
+            None
+        };
         let width = char_display_width(ch, screen_col, app.shift_width);
         if screen_col + width > start_col && screen_col < start_col + max_cols {
             let selected = is_selected(col, screen_col, width);
@@ -483,13 +505,18 @@ fn render_line_with_selection(
             };
             if buf.is_empty() {
                 buf_state = state;
+                buf_kind = kind;
                 buf.push(ch);
-            } else if state == buf_state {
+            } else if state == buf_state && kind == buf_kind {
                 buf.push(ch);
             } else {
-                spans.push(Span::styled(buf.clone(), style_for_state(buf_state, app)));
+                spans.push(Span::styled(
+                    buf.clone(),
+                    style_for_state(buf_state, buf_kind, app),
+                ));
                 buf.clear();
                 buf_state = state;
+                buf_kind = kind;
                 buf.push(ch);
             }
         }
@@ -501,7 +528,7 @@ fn render_line_with_selection(
     }
 
     if !buf.is_empty() {
-        spans.push(Span::styled(buf, style_for_state(buf_state, app)));
+        spans.push(Span::styled(buf, style_for_state(buf_state, buf_kind, app)));
     }
 
     if is_current_line {
@@ -509,14 +536,15 @@ fn render_line_with_selection(
         let rendered = line_len.saturating_sub(start_col).min(max_cols);
         let pad = max_cols.saturating_sub(rendered);
         if pad > 0 {
-            spans.push(Span::styled(" ".repeat(pad), style_for_state(1, app)));
+            spans.push(Span::styled(" ".repeat(pad), style_for_state(1, None, app)));
         }
     }
 
     Line::from(spans)
 }
 
-fn style_for_state(state: u8, app: &App) -> Style {
+fn style_for_state(state: u8, kind: Option<HighlightKind>, app: &App) -> Style {
+    let syntax_fg = kind.map(|k| syntax_color(k, app));
     match state {
         3 => Style::default()
             .fg(app.theme.selection_fg)
@@ -524,8 +552,38 @@ fn style_for_state(state: u8, app: &App) -> Style {
         2 => Style::default()
             .fg(app.theme.search_fg)
             .bg(app.theme.search_bg),
-        1 => Style::default().bg(app.theme.current_line_bg),
-        _ => Style::default(),
+        1 => {
+            let mut style = Style::default().bg(app.theme.current_line_bg);
+            if let Some(fg) = syntax_fg {
+                style = style.fg(fg);
+            }
+            style
+        }
+        _ => {
+            let mut style = Style::default();
+            if let Some(fg) = syntax_fg {
+                style = style.fg(fg);
+            }
+            style
+        }
+    }
+}
+
+fn syntax_color(kind: HighlightKind, app: &App) -> Color {
+    match kind {
+        HighlightKind::Keyword => app.theme.syntax_keyword,
+        HighlightKind::String => app.theme.syntax_string,
+        HighlightKind::Comment => app.theme.syntax_comment,
+        HighlightKind::Function => app.theme.syntax_function,
+        HighlightKind::Type => app.theme.syntax_type,
+        HighlightKind::Constant => app.theme.syntax_constant,
+        HighlightKind::Number => app.theme.syntax_number,
+        HighlightKind::Operator => app.theme.syntax_operator,
+        HighlightKind::Property => app.theme.syntax_property,
+        HighlightKind::Variable => app.theme.syntax_variable,
+        HighlightKind::Macro => app.theme.syntax_macro,
+        HighlightKind::Attribute => app.theme.syntax_attribute,
+        HighlightKind::Punctuation => app.theme.syntax_punctuation,
     }
 }
 

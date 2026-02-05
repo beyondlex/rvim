@@ -2,3 +2,9 @@ theme = "dark"
 
 [themes.dark]
 current_line_bg = "#464646"
+syntax_keyword = "#569CD6"
+syntax_string = "#6A9955"
+syntax_comment = "#6A9955"
+syntax_function = "#DCDCAA"
+syntax_type = "#4EC9B0"
+syntax_number = "#B5CEA8"

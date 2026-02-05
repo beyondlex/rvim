@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use crossterm::event::{KeyCode, KeyModifiers};
 
 use super::theme::Theme;
+use super::highlight::SyntaxState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -102,6 +103,8 @@ pub struct App {
     pub(crate) completion_cmd_prefix: Option<String>,
     pub(crate) completion_anchor_fixed: bool,
     pub(crate) completion_anchor_col: Option<u16>,
+    pub(crate) edit_tick: u64,
+    pub(crate) syntax_by_buffer: HashMap<usize, SyntaxState>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -140,6 +143,7 @@ pub(crate) struct BufferState {
     pub(crate) line_undo: Option<LineUndo>,
     pub(crate) is_restoring: bool,
     pub(crate) change_tick: u64,
+    pub(crate) edit_tick: u64,
 }
 
 #[derive(Debug, Clone)]

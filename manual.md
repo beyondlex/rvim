@@ -40,3 +40,7 @@
 ## Wide Char/Column Indexing
 - Cursor column uses screen width (tabs + wide chars).
 - New helpers in `src/app/types.rs` map char/byte/screen columns.
+
+## Syntax Highlighting (Tree-sitter)
+- Open `src/main.rs` and verify identifiers/types are colored.
+- If highlighting is missing, ensure `queries/rust/highlights.scm` exists.

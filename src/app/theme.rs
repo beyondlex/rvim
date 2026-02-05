@@ -11,6 +11,19 @@ pub struct Theme {
     pub(crate) selection_bg: Color,
     pub(crate) search_fg: Color,
     pub(crate) search_bg: Color,
+    pub(crate) syntax_keyword: Color,
+    pub(crate) syntax_string: Color,
+    pub(crate) syntax_comment: Color,
+    pub(crate) syntax_function: Color,
+    pub(crate) syntax_type: Color,
+    pub(crate) syntax_constant: Color,
+    pub(crate) syntax_number: Color,
+    pub(crate) syntax_operator: Color,
+    pub(crate) syntax_property: Color,
+    pub(crate) syntax_variable: Color,
+    pub(crate) syntax_macro: Color,
+    pub(crate) syntax_attribute: Color,
+    pub(crate) syntax_punctuation: Color,
 }
 
 impl Theme {
@@ -29,6 +42,19 @@ impl Theme {
             selection_bg: Color::Cyan,
             search_fg: Color::Black,
             search_bg: Color::Yellow,
+            syntax_keyword: Color::Blue,
+            syntax_string: Color::Green,
+            syntax_comment: Color::DarkGray,
+            syntax_function: Color::Rgb(0, 102, 204),
+            syntax_type: Color::Rgb(0, 128, 128),
+            syntax_constant: Color::Rgb(153, 51, 102),
+            syntax_number: Color::Rgb(204, 102, 0),
+            syntax_operator: Color::Rgb(96, 96, 96),
+            syntax_property: Color::Rgb(0, 102, 153),
+            syntax_variable: Color::Rgb(0, 0, 0),
+            syntax_macro: Color::Rgb(128, 0, 128),
+            syntax_attribute: Color::Rgb(153, 76, 0),
+            syntax_punctuation: Color::Rgb(80, 80, 80),
         }
     }
 
@@ -43,6 +69,19 @@ impl Theme {
             selection_bg: Color::Rgb(102, 153, 204),
             search_fg: Color::Black,
             search_bg: Color::Rgb(255, 211, 105),
+            syntax_keyword: Color::Rgb(86, 156, 214),
+            syntax_string: Color::Rgb(106, 153, 85),
+            syntax_comment: Color::Rgb(106, 153, 85),
+            syntax_function: Color::Rgb(220, 220, 170),
+            syntax_type: Color::Rgb(78, 201, 176),
+            syntax_constant: Color::Rgb(86, 156, 214),
+            syntax_number: Color::Rgb(181, 206, 168),
+            syntax_operator: Color::Rgb(212, 212, 212),
+            syntax_property: Color::Rgb(156, 220, 254),
+            syntax_variable: Color::Rgb(212, 212, 212),
+            syntax_macro: Color::Rgb(197, 134, 192),
+            syntax_attribute: Color::Rgb(214, 157, 133),
+            syntax_punctuation: Color::Rgb(212, 212, 212),
         }
     }
 
@@ -57,6 +96,19 @@ impl Theme {
             selection_bg: Color::Rgb(147, 161, 161),
             search_fg: Color::Rgb(7, 54, 66),
             search_bg: Color::Rgb(181, 137, 0),
+            syntax_keyword: Color::Rgb(38, 139, 210),
+            syntax_string: Color::Rgb(42, 161, 152),
+            syntax_comment: Color::Rgb(147, 161, 161),
+            syntax_function: Color::Rgb(38, 139, 210),
+            syntax_type: Color::Rgb(181, 137, 0),
+            syntax_constant: Color::Rgb(211, 54, 130),
+            syntax_number: Color::Rgb(203, 75, 22),
+            syntax_operator: Color::Rgb(88, 110, 117),
+            syntax_property: Color::Rgb(38, 139, 210),
+            syntax_variable: Color::Rgb(101, 123, 131),
+            syntax_macro: Color::Rgb(211, 54, 130),
+            syntax_attribute: Color::Rgb(133, 153, 0),
+            syntax_punctuation: Color::Rgb(88, 110, 117),
         }
     }
 

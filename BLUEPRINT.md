@@ -75,7 +75,7 @@ Goal: Modern coding features.
 
 Checklist:
 - [ ] LSP client (tower-lsp)
-- [ ] Syntax highlighting (tree-sitter)
+- [x] Syntax highlighting (tree-sitter)
 - [ ] File explorer
 
 ## Implementation Notes (recent)

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::collections::HashMap;
 
 use super::motion::char_count_in_range;
 use crossterm::event::{KeyCode, KeyModifiers};
@@ -74,6 +75,8 @@ impl App {
             completion_cmd_prefix: None,
             completion_anchor_fixed: false,
             completion_anchor_col: None,
+            edit_tick: 0,
+            syntax_by_buffer: HashMap::new(),
         }
     }
 
@@ -138,6 +141,7 @@ impl App {
             line_undo: self.line_undo.clone(),
             is_restoring: self.is_restoring,
             change_tick: self.change_tick,
+            edit_tick: self.edit_tick,
         }
     }
 
@@ -164,6 +168,7 @@ impl App {
         self.line_undo = state.line_undo;
         self.is_restoring = state.is_restoring;
         self.change_tick = state.change_tick;
+        self.edit_tick = state.edit_tick;
     }
 
     pub fn reset_transient_for_switch(&mut self) {
@@ -186,6 +191,10 @@ impl App {
         self.repeat_changed = false;
         self.repeat_buffer.clear();
         self.clear_completion();
+    }
+
+    pub(crate) fn touch_edit(&mut self) {
+        self.edit_tick = self.edit_tick.wrapping_add(1);
     }
 
     pub fn clear_completion(&mut self) {
@@ -329,6 +338,7 @@ impl App {
             }
         }
         self.record_undo();
+        self.touch_edit();
         self.insert_undo_snapshot = true;
         self.clear_line_undo();
         for ch in text.chars() {
@@ -788,6 +798,7 @@ impl App {
             self.redo_stack.push(current);
             self.restore(state);
             self.insert_undo_snapshot = false;
+            self.touch_edit();
         }
     }
 
@@ -797,6 +808,7 @@ impl App {
             self.undo_stack.push(current);
             self.restore(state);
             self.insert_undo_snapshot = false;
+            self.touch_edit();
         }
     }
 
@@ -828,6 +840,7 @@ impl App {
             return;
         }
         self.record_undo();
+        self.touch_edit();
         self.lines[lu.row] = lu.line;
         self.cursor_row = lu.row;
         let len = self.line_len(self.cursor_row);
@@ -837,6 +850,7 @@ impl App {
 
     pub(super) fn insert_char(&mut self, ch: char) {
         self.record_undo();
+        self.touch_edit();
         if let Some(block) = &mut self.block_insert {
             for row in block.start_row..=block.end_row {
                 if row >= self.lines.len() {
@@ -915,6 +929,7 @@ impl App {
 
     pub(super) fn insert_newline(&mut self) {
         self.record_undo();
+        self.touch_edit();
         if self.block_insert.is_some() {
             self.block_insert_newline();
             return;
@@ -943,6 +958,7 @@ impl App {
 
     pub(super) fn backspace(&mut self) {
         self.record_undo();
+        self.touch_edit();
         if let Some(block) = &mut self.block_insert {
             if block.col == 0 {
                 return;
@@ -988,6 +1004,7 @@ impl App {
 
     pub(super) fn delete_at_cursor(&mut self) {
         self.record_undo();
+        self.touch_edit();
         if self.block_insert.is_some() {
             return;
         }
@@ -1011,6 +1028,7 @@ impl App {
 
     pub(super) fn open_line_below(&mut self) {
         self.record_undo();
+        self.touch_edit();
         self.clear_line_undo();
         let line = &self.lines[self.cursor_row];
         let mut indent = Self::leading_whitespace(line);
@@ -1025,6 +1043,7 @@ impl App {
 
     pub(super) fn open_line_above(&mut self) {
         self.record_undo();
+        self.touch_edit();
         self.clear_line_undo();
         let line = &self.lines[self.cursor_row];
         let mut indent = Self::leading_whitespace(line);
@@ -1042,6 +1061,7 @@ impl App {
 
     pub(super) fn delete_range(&mut self, start: (usize, usize), end: (usize, usize)) {
         self.record_undo();
+        self.touch_edit();
         let (start, end) = normalize_range(start, end);
         if start.0 == end.0 {
             self.set_line_undo(start.0);
@@ -1086,6 +1106,7 @@ impl App {
 
     pub(super) fn delete_lines(&mut self, start_row: usize, end_row: usize) {
         self.record_undo();
+        self.touch_edit();
         self.clear_line_undo();
         if self.lines.is_empty() {
             return;
@@ -1103,6 +1124,7 @@ impl App {
 
     pub(super) fn delete_block(&mut self, start: (usize, usize), end: (usize, usize)) {
         self.record_undo();
+        self.touch_edit();
         self.clear_line_undo();
         let (start, end) = normalize_range(start, end);
         for row in start.0..=end.0 {
@@ -1221,6 +1243,7 @@ impl App {
 
     pub(super) fn delete_line(&mut self, row: usize) {
         self.record_undo();
+        self.touch_edit();
         self.clear_line_undo();
         if self.lines.is_empty() {
             return;
@@ -1264,6 +1287,7 @@ impl App {
 
     pub(super) fn paste_after(&mut self) {
         self.record_undo();
+        self.touch_edit();
         if self.yank_buffer.is_empty() {
             return;
         }
@@ -1294,6 +1318,7 @@ impl App {
 
     pub(super) fn paste_before(&mut self) {
         self.record_undo();
+        self.touch_edit();
         if self.yank_buffer.is_empty() {
             return;
         }
@@ -1323,6 +1348,7 @@ impl App {
     }
 
     pub(super) fn paste_block_at(&mut self, row: usize, col: usize) {
+        self.touch_edit();
         let mut r = row;
         for line_text in self.yank_buffer.split('\n') {
             if r >= self.lines.len() {
@@ -1343,6 +1369,7 @@ impl App {
         to_upper: bool,
     ) {
         self.record_undo();
+        self.touch_edit();
         self.clear_line_undo();
         let (start, end) = normalize_range(start, end);
         if start.0 == end.0 {
@@ -1374,6 +1401,7 @@ impl App {
 
     pub(super) fn change_case_lines(&mut self, start_row: usize, end_row: usize, to_upper: bool) {
         self.record_undo();
+        self.touch_edit();
         self.clear_line_undo();
         if self.lines.is_empty() {
             return;
@@ -1398,6 +1426,7 @@ impl App {
         to_upper: bool,
     ) {
         self.record_undo();
+        self.touch_edit();
         self.clear_line_undo();
         let (start, end) = normalize_range(start, end);
         for row in start.0..=end.0 {
@@ -1417,6 +1446,7 @@ impl App {
 
     pub(super) fn toggle_case_range(&mut self, start: (usize, usize), end: (usize, usize)) {
         self.record_undo();
+        self.touch_edit();
         self.clear_line_undo();
         let (start, end) = normalize_range(start, end);
         if start.0 == end.0 {
@@ -1448,6 +1478,7 @@ impl App {
 
     pub(super) fn toggle_case_lines(&mut self, start_row: usize, end_row: usize) {
         self.record_undo();
+        self.touch_edit();
         self.clear_line_undo();
         if self.lines.is_empty() {
             return;
@@ -1467,6 +1498,7 @@ impl App {
 
     pub(super) fn toggle_case_block(&mut self, start: (usize, usize), end: (usize, usize)) {
         self.record_undo();
+        self.touch_edit();
         self.clear_line_undo();
         let (start, end) = normalize_range(start, end);
         for row in start.0..=end.0 {
@@ -1485,6 +1517,7 @@ impl App {
     }
 
     pub(super) fn delete_block_range(&mut self, start: (usize, usize), end: (usize, usize)) {
+        self.touch_edit();
         let (start, end) = normalize_range(start, end);
         for row in start.0..=end.0 {
             if row >= self.lines.len() {
@@ -1507,6 +1540,7 @@ impl App {
     }
 
     pub(super) fn delete_range_no_undo(&mut self, start: (usize, usize), end: (usize, usize)) {
+        self.touch_edit();
         let (start, end) = normalize_range(start, end);
         if start.0 == end.0 {
             let row = start.0;
@@ -1547,6 +1581,7 @@ impl App {
     }
 
     pub(super) fn delete_lines_no_undo(&mut self, start_row: usize, end_row: usize) {
+        self.touch_edit();
         if self.lines.is_empty() {
             return;
         }

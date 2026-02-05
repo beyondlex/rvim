@@ -249,6 +249,59 @@ pub(super) fn char_to_byte_idx(s: &str, char_idx: usize) -> usize {
         .unwrap_or_else(|| s.len())
 }
 
+pub(crate) fn byte_to_char_idx(s: &str, byte_idx: usize) -> usize {
+    if byte_idx == 0 {
+        return 0;
+    }
+    let mut count = 0usize;
+    for (i, _) in s.char_indices() {
+        if i >= byte_idx {
+            break;
+        }
+        count += 1;
+    }
+    count
+}
+
+pub(crate) fn line_screen_width(s: &str, tab_width: usize) -> usize {
+    let mut col = 0usize;
+    for ch in s.chars() {
+        col += char_display_width(ch, col, tab_width);
+    }
+    col
+}
+
+pub(crate) fn char_to_screen_col(s: &str, char_idx: usize, tab_width: usize) -> usize {
+    let mut col = 0usize;
+    for (i, ch) in s.chars().enumerate() {
+        if i >= char_idx {
+            break;
+        }
+        col += char_display_width(ch, col, tab_width);
+    }
+    col
+}
+
+pub(crate) fn screen_col_to_char_idx(s: &str, screen_col: usize, tab_width: usize) -> usize {
+    let mut col = 0usize;
+    for (i, ch) in s.chars().enumerate() {
+        let w = char_display_width(ch, col, tab_width);
+        if col + w > screen_col {
+            return i;
+        }
+        col += w;
+    }
+    s.chars().count()
+}
+
+pub(crate) fn char_display_width(ch: char, col: usize, tab_width: usize) -> usize {
+    if ch == '\t' {
+        let width = tab_width.max(1);
+        return width - (col % width);
+    }
+    unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0).max(1)
+}
+
 pub(super) fn normalize_range(
     a: (usize, usize),
     b: (usize, usize),

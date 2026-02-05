@@ -8,6 +8,7 @@ use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 use crate::app::{App, CommandPrompt, Mode, VisualSelection, VisualSelectionKind};
+use crate::app::types::char_to_screen_col;
 
 pub fn apply_cursor_style(app: &App) -> Result<()> {
     match app.mode {
@@ -147,7 +148,10 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
             f.set_cursor_position(Position::new(cursor_x, cursor_y));
         }
     } else {
-        let cursor_x = (app.cursor_col.saturating_sub(app.scroll_col)) as u16
+        let line = app.lines.get(app.cursor_row).map(|s| s.as_str()).unwrap_or("");
+        let cursor_screen = char_to_screen_col(line, app.cursor_col, app.shift_width);
+        let scroll_screen = char_to_screen_col(line, app.scroll_col, app.shift_width);
+        let cursor_x = cursor_screen.saturating_sub(scroll_screen) as u16
             + main_area.x
             + gutter_width as u16;
         let cursor_y = (app.cursor_row.saturating_sub(app.scroll_row)) as u16 + main_area.y;

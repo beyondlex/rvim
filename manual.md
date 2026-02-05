@@ -36,3 +36,7 @@
 - Popover connects to command line without hiding cursor.
 - Highlight stays centered while list scrolls when possible.
 - Block scrollbar visible; bottom row not affected by status bar color.
+
+## Wide Char/Column Indexing
+- Cursor column uses screen width (tabs + wide chars).
+- New helpers in `src/app/types.rs` map char/byte/screen columns.

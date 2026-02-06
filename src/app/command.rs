@@ -299,6 +299,14 @@ impl App {
             "bp" | "bprev" => {
                 self.switch_prev_buffer();
             }
+            "map" => {
+                self.completion_candidates = self.keymaps.describe_lines();
+                self.completion_index = Some(0);
+                self.completion_cmd_prefix = Some("<map>".to_string());
+                self.completion_anchor_fixed = true;
+                self.completion_anchor_col = Some(0);
+                self.command_keep_open = true;
+            }
             "bd" | "bdelete" => {
                 if let Some(arg) = arg.as_deref() {
                     if let Ok(id) = arg.parse::<usize>() {

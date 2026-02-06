@@ -63,6 +63,7 @@ impl App {
             keymaps: super::keymap::Keymaps::default(),
             keymap_seq: Vec::new(),
             keymap_debug: false,
+            command_keep_open: false,
             last_search: None,
             search_history: Vec::new(),
             search_history_index: None,
@@ -181,6 +182,7 @@ impl App {
         self.command_prompt = CommandPrompt::Command;
         self.command_buffer.clear();
         self.command_cursor = 0;
+        self.command_keep_open = false;
         self.search_history_index = None;
         self.pending_count = None;
         self.visual_start = None;
@@ -1718,6 +1720,7 @@ fn default_command_candidates() -> Vec<String> {
         "bdelete",
         "bd!",
         "bdelete!",
+        "map",
     ]
     .into_iter()
     .map(|s| s.to_string())

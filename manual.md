@@ -20,6 +20,7 @@
 - `:` then `Tab/Shift-Tab` cycles command names.
 - `:b<Tab>` / `:w<Tab>` narrows matches.
 - Popover shows candidates and highlights current.
+- `:map` shows keymaps in a popover; press Esc to close.
 
 ## Path Completion
 - `:e<Tab>` cycles current dir entries.

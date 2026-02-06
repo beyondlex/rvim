@@ -57,6 +57,7 @@ Example (plugin): register custom commands via `App::register_command_candidate(
 - Normal mode: `]b` next buffer, `[b` previous buffer
 - `:bd [id]` / `:bdelete [id]` — close buffer (current if no id)
 - `:bd! [id]` / `:bdelete! [id]` — force close dirty buffer
+- `:map` — show current keymaps (popover list; press Esc to close)
 
 ### Options (`:set`)
 

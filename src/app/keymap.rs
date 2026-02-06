@@ -265,3 +265,196 @@ pub(crate) enum KeymapResult {
     Pending,
     NoMatch,
 }
+
+impl Keymaps {
+    pub(crate) fn describe(&self) -> String {
+        let mut parts = Vec::new();
+        let normal = format_map(&self.normal);
+        if !normal.is_empty() {
+            parts.push(format!("normal: {}", normal));
+        }
+        let insert = format_map(&self.insert);
+        if !insert.is_empty() {
+            parts.push(format!("insert: {}", insert));
+        }
+        let visual = format_map(&self.visual);
+        if !visual.is_empty() {
+            parts.push(format!("visual: {}", visual));
+        }
+        let command = format_map(&self.command);
+        if !command.is_empty() {
+            parts.push(format!("command: {}", command));
+        }
+        if parts.is_empty() {
+            "no keymaps".to_string()
+        } else {
+            parts.join(" | ")
+        }
+    }
+
+    pub(crate) fn describe_lines(&self) -> Vec<String> {
+        let mut lines = Vec::new();
+        lines.extend(format_map_lines("normal", &self.normal));
+        lines.extend(format_map_lines("insert", &self.insert));
+        lines.extend(format_map_lines("visual", &self.visual));
+        lines.extend(format_map_lines("command", &self.command));
+        if lines.is_empty() {
+            lines.push("no keymaps".to_string());
+        }
+        lines
+    }
+}
+
+fn format_map(map: &HashMap<Vec<KeySpec>, KeyAction>) -> String {
+    if map.is_empty() {
+        return String::new();
+    }
+    let mut entries: Vec<(String, String)> = map
+        .iter()
+        .map(|(seq, action)| (format_sequence(seq), action_name(*action)))
+        .collect();
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    entries
+        .into_iter()
+        .map(|(lhs, rhs)| format!("{}={}", lhs, rhs))
+        .collect::<Vec<String>>()
+        .join(", ")
+}
+
+fn format_map_lines(label: &str, map: &HashMap<Vec<KeySpec>, KeyAction>) -> Vec<String> {
+    if map.is_empty() {
+        return Vec::new();
+    }
+    let mode = match label {
+        "normal" => "n",
+        "insert" => "i",
+        "visual" => "v",
+        "command" => "c",
+        other => other,
+    };
+    let mut entries: Vec<(String, String)> = map
+        .iter()
+        .map(|(seq, action)| (format_sequence(seq), action_label(*action)))
+        .collect();
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    entries
+        .into_iter()
+        .map(|(lhs, rhs)| format!("{}  {} -> {}", mode, lhs, rhs))
+        .collect()
+}
+
+fn format_sequence(seq: &[KeySpec]) -> String {
+    let mut out = String::new();
+    for spec in seq {
+        out.push_str(&format_key_spec(spec));
+    }
+    out
+}
+
+fn format_key_spec(spec: &KeySpec) -> String {
+    if spec.mods == KeyModifiers::NONE {
+        if let KeyCode::Char(ch) = spec.code {
+            if ch == ' ' {
+                return "<Space>".to_string();
+            }
+            return ch.to_string();
+        }
+    }
+    let mut mods = Vec::new();
+    if spec.mods.contains(KeyModifiers::CONTROL) {
+        mods.push("C");
+    }
+    if spec.mods.contains(KeyModifiers::ALT) {
+        mods.push("M");
+    }
+    if spec.mods.contains(KeyModifiers::SUPER) {
+        mods.push("D");
+    }
+    if spec.mods.contains(KeyModifiers::SHIFT) {
+        mods.push("S");
+    }
+    let key = format_key_code(spec.code);
+    if mods.is_empty() {
+        format!("<{}>", key)
+    } else {
+        format!("<{}-{}>", mods.join("-"), key)
+    }
+}
+
+fn format_key_code(code: KeyCode) -> String {
+    match code {
+        KeyCode::Left => "Left".to_string(),
+        KeyCode::Right => "Right".to_string(),
+        KeyCode::Up => "Up".to_string(),
+        KeyCode::Down => "Down".to_string(),
+        KeyCode::Backspace => "Backspace".to_string(),
+        KeyCode::Tab => "Tab".to_string(),
+        KeyCode::BackTab => "BackTab".to_string(),
+        KeyCode::Enter => "Enter".to_string(),
+        KeyCode::Esc => "Esc".to_string(),
+        KeyCode::Delete => "Delete".to_string(),
+        KeyCode::Insert => "Insert".to_string(),
+        KeyCode::Home => "Home".to_string(),
+        KeyCode::End => "End".to_string(),
+        KeyCode::PageUp => "PageUp".to_string(),
+        KeyCode::PageDown => "PageDown".to_string(),
+        KeyCode::Char(ch) => ch.to_string(),
+        _ => "Key".to_string(),
+    }
+}
+
+fn action_name(action: KeyAction) -> String {
+    match action {
+        KeyAction::NoOp => "noop",
+        KeyAction::BufferNext => "buffer_next",
+        KeyAction::BufferPrev => "buffer_prev",
+        KeyAction::MoveLeft => "left",
+        KeyAction::MoveRight => "right",
+        KeyAction::MoveUp => "up",
+        KeyAction::MoveDown => "down",
+        KeyAction::MoveWordLeft => "word_left",
+        KeyAction::MoveWordRight => "word_right",
+        KeyAction::MoveLineStart => "line_start",
+        KeyAction::MoveLineEnd => "line_end",
+        KeyAction::Backspace => "backspace",
+        KeyAction::DeleteWord => "delete_word",
+        KeyAction::DeleteLineStart => "delete_line_start",
+        KeyAction::Enter => "enter",
+        KeyAction::Escape => "escape",
+        KeyAction::Tab => "tab",
+        KeyAction::BackTab => "backtab",
+    }
+    .to_string()
+}
+
+fn action_label(action: KeyAction) -> String {
+    let name = action_name(action);
+    if let Some(desc) = action_description(action) {
+        format!("{} ({})", name, desc)
+    } else {
+        name
+    }
+}
+
+fn action_description(action: KeyAction) -> Option<&'static str> {
+    match action {
+        KeyAction::NoOp => Some("disable"),
+        KeyAction::BufferNext => Some("next buffer"),
+        KeyAction::BufferPrev => Some("prev buffer"),
+        KeyAction::MoveLeft => Some("left"),
+        KeyAction::MoveRight => Some("right"),
+        KeyAction::MoveUp => Some("up"),
+        KeyAction::MoveDown => Some("down"),
+        KeyAction::MoveWordLeft => Some("word left"),
+        KeyAction::MoveWordRight => Some("word right"),
+        KeyAction::MoveLineStart => Some("line start"),
+        KeyAction::MoveLineEnd => Some("line end"),
+        KeyAction::Backspace => Some("backspace"),
+        KeyAction::DeleteWord => Some("delete word"),
+        KeyAction::DeleteLineStart => Some("delete to line start"),
+        KeyAction::Enter => Some("enter"),
+        KeyAction::Escape => Some("escape"),
+        KeyAction::Tab => Some("tab"),
+        KeyAction::BackTab => Some("backtab"),
+    }
+}

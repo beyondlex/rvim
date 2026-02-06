@@ -91,6 +91,7 @@ pub struct App {
     pub(crate) keymaps: Keymaps,
     pub(crate) keymap_seq: Vec<KeySpec>,
     pub(crate) keymap_debug: bool,
+    pub(crate) command_keep_open: bool,
     pub(crate) last_search: Option<SearchSpec>,
     pub(crate) search_history: Vec<String>,
     pub(crate) search_history_index: Option<usize>,

@@ -668,6 +668,12 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 } else {
                     app.execute_search()?
                 };
+                if app.command_keep_open {
+                    app.command_keep_open = false;
+                    app.search_history_index = None;
+                    app.command_history_index = None;
+                    return Ok(false);
+                }
                 app.command_buffer.clear();
                 app.command_cursor = 0;
                 app.mode = Mode::Normal;
@@ -700,7 +706,19 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.clear_completion();
             }
             (KeyCode::Tab, _) => {
-                if complete_path_in_command(app, false)
+                if app
+                    .completion_cmd_prefix
+                    .as_deref()
+                    .is_some_and(|p| p == "<map>")
+                    && !app.completion_candidates.is_empty()
+                {
+                    let next_idx = match app.completion_index {
+                        Some(idx) => (idx + 1) % app.completion_candidates.len(),
+                        None => 0,
+                    };
+                    app.completion_index = Some(next_idx);
+                    app.search_history_index = None;
+                } else if complete_path_in_command(app, false)
                     || complete_set_in_command(app, false)
                     || complete_command_in_command(app, false)
                 {
@@ -708,7 +726,20 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 }
             }
             (KeyCode::BackTab, _) => {
-                if complete_path_in_command(app, true)
+                if app
+                    .completion_cmd_prefix
+                    .as_deref()
+                    .is_some_and(|p| p == "<map>")
+                    && !app.completion_candidates.is_empty()
+                {
+                    let total = app.completion_candidates.len();
+                    let next_idx = match app.completion_index {
+                        Some(idx) => (idx + total - 1) % total,
+                        None => 0,
+                    };
+                    app.completion_index = Some(next_idx);
+                    app.search_history_index = None;
+                } else if complete_path_in_command(app, true)
                     || complete_set_in_command(app, true)
                     || complete_command_in_command(app, true)
                 {

@@ -26,6 +26,7 @@ Key spec examples:
 - `"<Left>"`, `"<Right>"`, `"<Backspace>"`, `"<Tab>"`
 
 Supported actions:
+- `buffer_next`, `buffer_prev`
 - `left`, `right`, `up`, `down`
 - `word_left`, `word_right`
 - `line_start`, `line_end`
@@ -33,6 +34,7 @@ Supported actions:
 - `enter`, `escape`, `tab`, `backtab`
 
 Note: Actions are applied per mode; unsupported actions are ignored.
+Set `keymap_debug = true` in `rvim.toml` to log key events to `~/.config/rvim/rvim.log`.
 Example (plugin): register custom commands via `App::register_command_candidate("MyCmd")`.
 
 ### File commands
@@ -50,6 +52,7 @@ Example (plugin): register custom commands via `App::register_command_candidate(
 - `:b <id>` / `:buffer <id>` — switch to buffer
 - `:bn` / `:bnext` — next buffer
 - `:bp` / `:bprev` — previous buffer
+- Normal mode: `]b` next buffer, `[b` previous buffer
 - `:bd [id]` / `:bdelete [id]` — close buffer (current if no id)
 - `:bd! [id]` / `:bdelete! [id]` — force close dirty buffer
 

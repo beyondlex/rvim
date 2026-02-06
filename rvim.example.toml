@@ -9,6 +9,8 @@ syntax_function = "#DCDCAA"
 syntax_type = "#4EC9B0"
 syntax_number = "#B5CEA8"
 
+# keymap_debug = true
+
 [keymap.command]
 "<M-Backspace>" = "delete_word"
 "<M-Left>" = "word_left"

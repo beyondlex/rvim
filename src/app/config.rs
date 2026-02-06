@@ -13,6 +13,7 @@ pub struct Config {
     pub(crate) theme: Option<String>,
     pub(crate) themes: Option<HashMap<String, ThemeOverride>>,
     pub(crate) keymap: Option<KeymapConfig>,
+    pub(crate) keymap_debug: Option<bool>,
 }
 
 pub fn load_config() -> Result<Config> {

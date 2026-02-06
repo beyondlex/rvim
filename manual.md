@@ -7,6 +7,7 @@
 - `:e a.txt`, `:e b.txt`, then `:ls` shows 2 buffers and status shows `buf:x/y`.
 - `:b <id>` switches and restores cursor/scroll.
 - `:bn` / `:bp` cycles buffers.
+- Normal mode `]b` / `[b` cycles buffers.
 - `:bd` closes current; dirty buffer warns; `:bd!` forces close.
 
 ## Command History
@@ -31,6 +32,7 @@
 
 ## Keymap
 - Add a `[keymap.command]` section in `rvim.toml`, restart, and verify the mapped key triggers the expected action.
+- Enable `keymap_debug = true` to log key events to `~/.config/rvim/rvim.log`.
 
 ## :set Completion
 - `:set <Tab>` shows options.

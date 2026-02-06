@@ -11,6 +11,10 @@ use super::types::{
 use super::App;
 
 pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
+    app.log_key_event(&format!(
+        "mode={:?} code={:?} mods={:?}",
+        app.mode, key.code, key.modifiers
+    ));
     let pre_tick = app.change_tick;
     if !app.repeat_replaying && !app.repeat_recording && should_start_repeat(app, &key) {
         app.repeat_recording = true;
@@ -36,6 +40,11 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
         && key.modifiers == KeyModifiers::NONE
     {
         app.pending_g = false;
+    }
+    if app.pending_bracket.is_some()
+        && !(key.code == KeyCode::Char('b') && key.modifiers == KeyModifiers::NONE)
+    {
+        app.pending_bracket = None;
     }
 
     if let Some(action) = app.keymaps.action_for(app.mode, &key) {
@@ -159,8 +168,15 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.pending_textobj = None;
                 app.pending_find = None;
                 app.pending_g = false;
+                app.pending_bracket = None;
                 app.last_search = None;
                 app.pending_count = None;
+            }
+            (KeyCode::Char(']'), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
+                app.pending_bracket = Some(']');
+            }
+            (KeyCode::Char('['), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
+                app.pending_bracket = Some('[');
             }
             (KeyCode::Char('.'), KeyModifiers::NONE) => {
                 replay_last_change(app)?;
@@ -375,9 +391,17 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 }
             }
             (KeyCode::Char('b'), KeyModifiers::NONE) => {
-                let count = app.pending_count.take().unwrap_or(1);
-                for _ in 0..count {
-                    app.move_word_back();
+                if app.pending_bracket == Some(']') {
+                    app.pending_bracket = None;
+                    app.switch_next_buffer();
+                } else if app.pending_bracket == Some('[') {
+                    app.pending_bracket = None;
+                    app.switch_prev_buffer();
+                } else {
+                    let count = app.pending_count.take().unwrap_or(1);
+                    for _ in 0..count {
+                        app.move_word_back();
+                    }
                 }
             }
             (KeyCode::Char('e'), KeyModifiers::NONE) => {
@@ -1025,7 +1049,20 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Char('k'), KeyModifiers::NONE) | (KeyCode::Up, _) => app.move_up(),
             (KeyCode::Char('l'), KeyModifiers::NONE) | (KeyCode::Right, _) => app.move_right(),
             (KeyCode::Char('w'), KeyModifiers::NONE) => app.move_word_forward(),
-            (KeyCode::Char('b'), KeyModifiers::NONE) => app.move_word_back(),
+            (KeyCode::Char('b'), KeyModifiers::NONE) => {
+                app.log_key_event(&format!("pending_bracket check {:?}", app.pending_bracket));
+                if app.pending_bracket == Some(']') {
+                    app.pending_bracket = None;
+                    app.log_key_event("buffer_next");
+                    app.switch_next_buffer();
+                } else if app.pending_bracket == Some('[') {
+                    app.pending_bracket = None;
+                    app.log_key_event("buffer_prev");
+                    app.switch_prev_buffer();
+                } else {
+                    app.move_word_back();
+                }
+            }
             (KeyCode::Char('e'), KeyModifiers::NONE) => app.move_word_end(),
             (KeyCode::Char('W'), _) => app.move_big_word_forward(),
             (KeyCode::Char('B'), _) => app.move_big_word_back(),
@@ -1844,6 +1881,8 @@ fn apply_keymap_action(app: &mut App, action: KeyAction) -> Result<Option<bool>>
         }
         Mode::Normal | Mode::VisualChar | Mode::VisualLine | Mode::VisualBlock => {
             match action {
+                KeyAction::BufferNext => app.switch_next_buffer(),
+                KeyAction::BufferPrev => app.switch_prev_buffer(),
                 KeyAction::MoveLeft => app.move_left(),
                 KeyAction::MoveRight => app.move_right(),
                 KeyAction::MoveUp => app.move_up(),

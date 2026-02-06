@@ -41,6 +41,7 @@ Example (`rvim.toml`):
 
 ```toml
 theme = "dark"
+keymap_debug = true
 
 [themes.dark]
 current_line_bg = "#464646"

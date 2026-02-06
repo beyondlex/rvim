@@ -52,7 +52,7 @@ impl App {
         true
     }
 
-    fn switch_next_buffer(&mut self) {
+    pub(crate) fn switch_next_buffer(&mut self) {
         let ids = self.sorted_buffer_ids();
         if ids.len() <= 1 {
             self.set_status("No other buffers");
@@ -68,7 +68,7 @@ impl App {
         }
     }
 
-    fn switch_prev_buffer(&mut self) {
+    pub(crate) fn switch_prev_buffer(&mut self) {
         let ids = self.sorted_buffer_ids();
         if ids.len() <= 1 {
             self.set_status("No other buffers");

@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
 
 use super::motion::char_count_in_range;
 use crossterm::event::{KeyCode, KeyModifiers};
@@ -45,6 +47,7 @@ impl App {
             insert_undo_snapshot: false,
             pending_find: None,
             pending_g: false,
+            pending_bracket: None,
             operator_pending: None,
             last_find: None,
             pending_textobj: None,
@@ -59,6 +62,7 @@ impl App {
             command_candidates: default_command_candidates(),
             command_cursor: 0,
             keymaps: super::keymap::Keymaps::default(),
+            keymap_debug: false,
             last_search: None,
             search_history: Vec::new(),
             search_history_index: None,
@@ -185,6 +189,7 @@ impl App {
         self.insert_undo_snapshot = false;
         self.pending_find = None;
         self.pending_g = false;
+        self.pending_bracket = None;
         self.operator_pending = None;
         self.last_find = None;
         self.pending_textobj = None;
@@ -224,6 +229,29 @@ impl App {
         self.command_cursor = idx + sanitized.chars().count();
     }
 
+    pub(crate) fn log_key_event(&self, label: &str) {
+        if !self.keymap_debug {
+            return;
+        }
+        let Some(home) = std::env::var_os("HOME") else {
+            return;
+        };
+        let mut path = PathBuf::from(home);
+        path.push(".config/rvim");
+        if fs::create_dir_all(&path).is_err() {
+            return;
+        }
+        path.push("rvim.log");
+        let _ = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .and_then(|mut f| {
+                use std::io::Write;
+                writeln!(f, "keymap {}", label)
+            });
+    }
+
     #[allow(dead_code)]
     pub fn register_command_candidate(&mut self, name: impl Into<String>) {
         let name = name.into();
@@ -239,6 +267,10 @@ impl App {
             if let Some(theme) = super::theme::Theme::from_name(name) {
                 self.set_theme_named(name, theme);
             }
+        }
+        self.keymap_debug = config.keymap_debug.unwrap_or(false);
+        if self.keymap_debug {
+            self.set_status("Keymap debug: on");
         }
         let (keymaps, errors) = super::keymap::Keymaps::from_config(config.keymap.as_ref());
         self.keymaps = keymaps;

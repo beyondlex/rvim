@@ -274,6 +274,48 @@ pub(crate) enum KeymapResult {
     NoMatch,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn key_event(ch: char) -> KeyEvent {
+        KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn default_keymap_supports_bracket_b_sequences() {
+        let keymaps = Keymaps::default();
+        let mut seq = Vec::new();
+
+        let res = keymaps.action_for_seq(Mode::Normal, &key_event(']'), &mut seq);
+        assert!(matches!(res, KeymapResult::Pending));
+
+        let res = keymaps.action_for_seq(Mode::Normal, &key_event('b'), &mut seq);
+        assert!(matches!(res, KeymapResult::Matched(KeyAction::BufferNext)));
+
+        let res = keymaps.action_for_seq(Mode::Normal, &key_event('['), &mut seq);
+        assert!(matches!(res, KeymapResult::Pending));
+
+        let res = keymaps.action_for_seq(Mode::Normal, &key_event('b'), &mut seq);
+        assert!(matches!(res, KeymapResult::Matched(KeyAction::BufferPrev)));
+    }
+
+    #[test]
+    fn unknown_sequence_clears_pending_state() {
+        let keymaps = Keymaps::default();
+        let mut seq = Vec::new();
+
+        let res = keymaps.action_for_seq(Mode::Normal, &key_event(']'), &mut seq);
+        assert!(matches!(res, KeymapResult::Pending));
+
+        let res = keymaps.action_for_seq(Mode::Normal, &key_event('x'), &mut seq);
+        assert!(matches!(res, KeymapResult::NoMatch));
+
+        let res = keymaps.action_for_seq(Mode::Normal, &key_event('b'), &mut seq);
+        assert!(matches!(res, KeymapResult::NoMatch));
+    }
+}
+
 impl Keymaps {
     pub(crate) fn describe(&self) -> String {
         let mut parts = Vec::new();

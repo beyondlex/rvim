@@ -661,16 +661,16 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                     return Ok(true);
                 }
             }
-            (KeyCode::Backspace, mods) if mods.contains(KeyModifiers::ALT) => {
-                command_delete_prev_word(app);
+            (KeyCode::Backspace, mods) if mods.contains(KeyModifiers::SUPER) => {
+                command_delete_to_line_start(app);
                 app.search_history_index = None;
                 app.command_history_index = None;
                 app.clear_completion();
             }
             (KeyCode::Backspace, mods)
-                if mods.contains(KeyModifiers::SUPER) || mods.contains(KeyModifiers::CONTROL) =>
+                if mods.contains(KeyModifiers::ALT) || mods.contains(KeyModifiers::CONTROL) =>
             {
-                command_delete_to_line_start(app);
+                command_delete_prev_word(app);
                 app.search_history_index = None;
                 app.command_history_index = None;
                 app.clear_completion();
@@ -769,21 +769,21 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                     }
                 }
             }
-            (KeyCode::Left, mods) if mods.contains(KeyModifiers::ALT) => {
-                command_move_word_left(app);
-            }
-            (KeyCode::Right, mods) if mods.contains(KeyModifiers::ALT) => {
-                command_move_word_right(app);
-            }
-            (KeyCode::Left, mods)
-                if mods.contains(KeyModifiers::SUPER) || mods.contains(KeyModifiers::CONTROL) =>
-            {
+            (KeyCode::Left, mods) if mods.contains(KeyModifiers::SUPER) => {
                 command_move_line_start(app);
             }
-            (KeyCode::Right, mods)
-                if mods.contains(KeyModifiers::SUPER) || mods.contains(KeyModifiers::CONTROL) =>
-            {
+            (KeyCode::Right, mods) if mods.contains(KeyModifiers::SUPER) => {
                 command_move_line_end(app);
+            }
+            (KeyCode::Left, mods)
+                if mods.contains(KeyModifiers::ALT) || mods.contains(KeyModifiers::CONTROL) =>
+            {
+                command_move_word_left(app);
+            }
+            (KeyCode::Right, mods)
+                if mods.contains(KeyModifiers::ALT) || mods.contains(KeyModifiers::CONTROL) =>
+            {
+                command_move_word_right(app);
             }
             (KeyCode::Left, _) => {
                 command_move_left(app);
@@ -1394,6 +1394,10 @@ fn command_backspace(app: &mut App) {
     app.command_cursor = start;
 }
 
+fn is_command_word_sep(ch: char) -> bool {
+    ch.is_whitespace() || ch == '/'
+}
+
 fn command_delete_prev_word(app: &mut App) {
     let len = command_buffer_len(app);
     let mut idx = app.command_cursor.min(len);
@@ -1401,10 +1405,10 @@ fn command_delete_prev_word(app: &mut App) {
         return;
     }
     let chars: Vec<char> = app.command_buffer.chars().collect();
-    while idx > 0 && chars[idx - 1].is_whitespace() {
+    while idx > 0 && is_command_word_sep(chars[idx - 1]) {
         idx -= 1;
     }
-    while idx > 0 && !chars[idx - 1].is_whitespace() {
+    while idx > 0 && !is_command_word_sep(chars[idx - 1]) {
         idx -= 1;
     }
     let start_byte = char_to_byte_idx(&app.command_buffer, idx);
@@ -1442,10 +1446,10 @@ fn command_move_word_left(app: &mut App) {
         return;
     }
     let chars: Vec<char> = app.command_buffer.chars().collect();
-    while idx > 0 && chars[idx - 1].is_whitespace() {
+    while idx > 0 && is_command_word_sep(chars[idx - 1]) {
         idx -= 1;
     }
-    while idx > 0 && !chars[idx - 1].is_whitespace() {
+    while idx > 0 && !is_command_word_sep(chars[idx - 1]) {
         idx -= 1;
     }
     app.command_cursor = idx;
@@ -1455,10 +1459,10 @@ fn command_move_word_right(app: &mut App) {
     let len = command_buffer_len(app);
     let mut idx = app.command_cursor.min(len);
     let chars: Vec<char> = app.command_buffer.chars().collect();
-    while idx < len && chars[idx].is_whitespace() {
+    while idx < len && is_command_word_sep(chars[idx]) {
         idx += 1;
     }
-    while idx < len && !chars[idx].is_whitespace() {
+    while idx < len && !is_command_word_sep(chars[idx]) {
         idx += 1;
     }
     app.command_cursor = idx;

@@ -9,10 +9,10 @@ Enter command mode with `:` then press Enter to execute.
 Command completion: in command mode, `Tab`/`Shift-Tab` cycles completion for commands and options.
 
 Command-line editing (command and search prompts):
-- `Alt+Backspace` deletes previous word.
-- `Ctrl+Backspace` or `Cmd+Backspace` deletes to line start (when the terminal sends it).
-- `Alt+←/→` moves by word.
-- `Ctrl+←/→` or `Cmd+←/→` moves to line start/end (when the terminal sends it).
+- `Alt+Backspace` or `Ctrl+Backspace` deletes previous word (word boundaries treat `/` as a separator).
+- `Cmd+Backspace` deletes to line start (when the terminal sends it).
+- `Alt+←/→` or `Ctrl+←/→` moves by word (word boundaries treat `/` as a separator).
+- `Cmd+←/→` moves to line start/end (when the terminal sends it).
 Example (plugin): register custom commands via `App::register_command_candidate("MyCmd")`.
 
 ### File commands

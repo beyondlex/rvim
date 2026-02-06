@@ -52,6 +52,9 @@ pub(crate) struct SyntaxState {
     cache_tick: u64,
     debug_last_log_tick: u64,
     cache: HashMap<usize, Vec<SyntaxSpan>>,
+    line_cache: HashMap<usize, Vec<SyntaxSpan>>,
+    line_cache_order: Vec<usize>,
+    line_cache_limit: usize,
     viewport_tick: u64,
     viewport_start: usize,
     viewport_rows: usize,
@@ -114,7 +117,7 @@ pub(crate) fn syntax_spans_for_state(
         let mut missing_start: Option<usize> = None;
         let mut missing_len = 0usize;
         for row in start_row..end_row {
-            if let Some(spans) = state.viewport_cache.get(&row).cloned() {
+            if let Some(spans) = take_line_cache(state, row) {
                 if let Some(ms) = missing_start.take() {
                     let partial = compute_spans_for_range(state, lines, ms, missing_len, edit_tick);
                     out.extend(partial);
@@ -132,13 +135,40 @@ pub(crate) fn syntax_spans_for_state(
             let partial = compute_spans_for_range(state, lines, ms, missing_len, edit_tick);
             out.extend(partial);
         }
+        for (row, spans) in &out {
+            cache_line_spans(state, *row, spans.clone());
+        }
         state.viewport_tick = edit_tick;
         state.viewport_start = start_row;
         state.viewport_rows = rows;
         state.viewport_cache = out.clone();
         return out;
     }
-    let out = compute_spans_for_range(state, lines, start_row, rows, edit_tick);
+    let mut out: HashMap<usize, Vec<SyntaxSpan>> = HashMap::new();
+    let mut missing_start: Option<usize> = None;
+    let mut missing_len = 0usize;
+    for row in start_row..end_row {
+        if let Some(spans) = take_line_cache(state, row) {
+            if let Some(ms) = missing_start.take() {
+                let partial = compute_spans_for_range(state, lines, ms, missing_len, edit_tick);
+                out.extend(partial);
+                missing_len = 0;
+            }
+            out.insert(row, spans);
+        } else {
+            if missing_start.is_none() {
+                missing_start = Some(row);
+            }
+            missing_len += 1;
+        }
+    }
+    if let Some(ms) = missing_start {
+        let partial = compute_spans_for_range(state, lines, ms, missing_len, edit_tick);
+        out.extend(partial);
+    }
+    for (row, spans) in &out {
+        cache_line_spans(state, *row, spans.clone());
+    }
     state.viewport_tick = edit_tick;
     state.viewport_start = start_row;
     state.viewport_rows = rows;
@@ -238,7 +268,36 @@ fn compute_spans_for_range(
     } else if out.is_empty() {
         debug_log("syntax: no spans produced for viewport");
     }
+    for row in start_row..end_row {
+        out.entry(row).or_insert_with(Vec::new);
+    }
     out
+}
+
+fn cache_line_spans(state: &mut SyntaxState, row: usize, spans: Vec<SyntaxSpan>) {
+    if state.line_cache.contains_key(&row) {
+        state.line_cache.insert(row, spans);
+        return;
+    }
+    state.line_cache.insert(row, spans);
+    state.line_cache_order.push(row);
+    if state.line_cache_order.len() > state.line_cache_limit {
+        if let Some(oldest) = state.line_cache_order.first().copied() {
+            state.line_cache.remove(&oldest);
+        }
+        state.line_cache_order.remove(0);
+    }
+}
+
+fn take_line_cache(state: &mut SyntaxState, row: usize) -> Option<Vec<SyntaxSpan>> {
+    if let Some(spans) = state.line_cache.get(&row).cloned() {
+        if let Some(pos) = state.line_cache_order.iter().position(|r| *r == row) {
+            state.line_cache_order.remove(pos);
+            state.line_cache_order.push(row);
+        }
+        return Some(spans);
+    }
+    None
 }
 
 fn load_markdown_inline_query() -> Option<QuerySource> {
@@ -421,6 +480,9 @@ impl SyntaxState {
             cache_tick: u64::MAX,
             debug_last_log_tick: u64::MAX,
             cache: HashMap::new(),
+            line_cache: HashMap::new(),
+            line_cache_order: Vec::new(),
+            line_cache_limit: 2000,
             viewport_tick: u64::MAX,
             viewport_start: 0,
             viewport_rows: 0,
@@ -439,6 +501,8 @@ impl SyntaxState {
         self.tree = Some(tree);
         self.cache_tick = edit_tick;
         self.cache.clear();
+        self.line_cache.clear();
+        self.line_cache_order.clear();
         self.viewport_tick = u64::MAX;
         self.viewport_cache.clear();
         Ok(())

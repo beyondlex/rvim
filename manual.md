@@ -21,10 +21,12 @@
 
 ## Path Completion
 - `:e<Tab>` cycles current dir entries.
+- If there is a single match, `Tab` completes it without showing the popover; pressing `Tab` again shows the list for the completed directory (when applicable).
 - `:e src/<Tab>` cycles entries in `src/`.
 - `:e ..<Tab>` / `:e ./<Tab>` complete to `../` / `./`.
 - `:e ~/` or `:e "~/My Docs/` completes (spaces supported).
 - Directory candidates display as `name/` and popover anchor is stable.
+- When the popover is open and a directory is selected, press `/` to enter it and list its contents.
 
 ## :set Completion
 - `:set <Tab>` shows options.

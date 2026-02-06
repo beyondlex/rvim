@@ -15,8 +15,8 @@ Example (plugin): register custom commands via `App::register_command_candidate(
 - `:q` / `:quit` — quit (fails if dirty)
 - `:q!` / `:quit!` — quit without saving
 - `:wq` / `:x` — save and quit (use `:wq <path>` if no file name)
-- `:e <path>` / `:edit <path>` — open file (new buffer if not already open; `Tab`/`Shift-Tab` completes paths, including `~/`, quoted paths, and `./`/`../`)
-- `:w <path>` / `:write <path>` — save to path (`Tab`/`Shift-Tab` completes paths)
+- `:e <path>` / `:edit <path>` — open file (new buffer if not already open; `Tab`/`Shift-Tab` completes paths, including `~/`, quoted paths, and `./`/`../`; `/` enters a selected directory in the completion popover)
+- `:w <path>` / `:write <path>` — save to path (`Tab`/`Shift-Tab` completes paths; `/` enters a selected directory in the completion popover)
 
 ### Buffers
 

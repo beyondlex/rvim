@@ -52,6 +52,10 @@ pub(crate) struct SyntaxState {
     cache_tick: u64,
     debug_last_log_tick: u64,
     cache: HashMap<usize, Vec<SyntaxSpan>>,
+    viewport_tick: u64,
+    viewport_start: usize,
+    viewport_rows: usize,
+    viewport_cache: HashMap<usize, Vec<SyntaxSpan>>,
 }
 
 #[derive(Debug, Clone)]
@@ -96,6 +100,12 @@ pub(crate) fn syntax_spans_for_state(
     if let Err(err) = state.sync(lines, edit_tick) {
         debug_log(&format!("syntax: sync failed: {}", err));
         return HashMap::new();
+    }
+    if state.viewport_tick == edit_tick
+        && state.viewport_start == start_row
+        && state.viewport_rows == rows
+    {
+        return state.viewport_cache.clone();
     }
     let line_count = lines.len();
     if line_count == 0 {
@@ -182,6 +192,10 @@ pub(crate) fn syntax_spans_for_state(
     } else if out.is_empty() {
         debug_log("syntax: no spans produced for viewport");
     }
+    state.viewport_tick = edit_tick;
+    state.viewport_start = start_row;
+    state.viewport_rows = rows;
+    state.viewport_cache = out.clone();
     out
 }
 
@@ -365,6 +379,10 @@ impl SyntaxState {
             cache_tick: u64::MAX,
             debug_last_log_tick: u64::MAX,
             cache: HashMap::new(),
+            viewport_tick: u64::MAX,
+            viewport_start: 0,
+            viewport_rows: 0,
+            viewport_cache: HashMap::new(),
         })
     }
 
@@ -379,6 +397,8 @@ impl SyntaxState {
         self.tree = Some(tree);
         self.cache_tick = edit_tick;
         self.cache.clear();
+        self.viewport_tick = u64::MAX;
+        self.viewport_cache.clear();
         Ok(())
     }
 }

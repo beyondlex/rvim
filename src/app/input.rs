@@ -1431,6 +1431,14 @@ fn complete_path_in_command(app: &mut App, reverse: bool) -> bool {
     }
 
     matches.sort();
+
+    if !reverse && matches.len() == 1 {
+        let only = matches[0].clone();
+        app.command_buffer = format!("{}{}", cmd_prefix, only);
+        app.clear_completion();
+        return true;
+    }
+
     app.completion_candidates = matches;
     app.completion_index = Some(0);
     app.completion_cmd_prefix = Some(cmd_prefix.to_string());

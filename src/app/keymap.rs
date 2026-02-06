@@ -332,14 +332,35 @@ fn format_map_lines(label: &str, map: &HashMap<Vec<KeySpec>, KeyAction>) -> Vec<
         "command" => "c",
         other => other,
     };
-    let mut entries: Vec<(String, String)> = map
+    let mut entries: Vec<(String, String, Option<&'static str>)> = map
         .iter()
-        .map(|(seq, action)| (format_sequence(seq), action_label(*action)))
+        .map(|(seq, action)| {
+            (
+                format_sequence(seq),
+                action_name(*action),
+                action_description(*action),
+            )
+        })
         .collect();
     entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let lhs_width = entries.iter().map(|(lhs, _, _)| lhs.len()).max().unwrap_or(0);
+    let name_width = entries.iter().map(|(_, name, _)| name.len()).max().unwrap_or(0);
+
     entries
         .into_iter()
-        .map(|(lhs, rhs)| format!("{}  {} -> {}", mode, lhs, rhs))
+        .map(|(lhs, name, desc)| {
+            let desc_part = desc.map(|d| format!("  {}", d)).unwrap_or_default();
+            format!(
+                "{}  {:<lhs_width$}  {:<name_width$}{}",
+                mode,
+                lhs,
+                name,
+                desc_part,
+                lhs_width = lhs_width,
+                name_width = name_width
+            )
+        })
         .collect()
 }
 
@@ -425,15 +446,6 @@ fn action_name(action: KeyAction) -> String {
         KeyAction::BackTab => "backtab",
     }
     .to_string()
-}
-
-fn action_label(action: KeyAction) -> String {
-    let name = action_name(action);
-    if let Some(desc) = action_description(action) {
-        format!("{} ({})", name, desc)
-    } else {
-        name
-    }
 }
 
 fn action_description(action: KeyAction) -> Option<&'static str> {

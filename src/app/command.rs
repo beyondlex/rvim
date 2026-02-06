@@ -307,6 +307,32 @@ impl App {
                 self.completion_anchor_col = Some(0);
                 self.command_keep_open = true;
             }
+            "perf" => {
+                let subcmd = arg.as_deref().unwrap_or("avg");
+                if !self.perf_enabled {
+                    self.set_status("perf disabled (set RVIM_PERF=1)");
+                } else if subcmd == "reset" {
+                    self.perf_samples.clear();
+                    self.set_status("perf: samples cleared");
+                } else if subcmd == "detail" {
+                    if let Some((min, avg, max, n)) = self.perf_stats_us() {
+                        self.set_status(format!(
+                            "perf min:{}us avg:{}us max:{}us (last {})",
+                            min, avg, max, n
+                        ));
+                    } else {
+                        self.set_status("perf: no samples yet");
+                    }
+                } else if let Some(avg) = self.perf_average_us() {
+                    self.set_status(format!(
+                        "perf avg: {}us (last {})",
+                        avg,
+                        self.perf_samples.len()
+                    ));
+                } else {
+                    self.set_status("perf: no samples yet");
+                }
+            }
             "bd" | "bdelete" => {
                 if let Some(arg) = arg.as_deref() {
                     if let Ok(id) = arg.parse::<usize>() {

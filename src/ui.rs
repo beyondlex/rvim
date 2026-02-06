@@ -24,8 +24,7 @@ pub fn apply_cursor_style(app: &App) -> Result<()> {
 }
 
 pub fn ui(f: &mut Frame<'_>, app: &mut App) {
-    let perf_enabled = std::env::var("RVIM_PERF").ok().as_deref() == Some("1");
-    let perf_start = if perf_enabled { Some(Instant::now()) } else { None };
+    let perf_start = if app.perf_enabled { Some(Instant::now()) } else { None };
     let size = f.area();
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -128,6 +127,7 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
     if let Some(start) = perf_start {
         let micros = start.elapsed().as_micros();
         status.push_str(&format!(" | render:{}us", micros));
+        app.push_perf_sample(micros);
     }
 
     let status_paragraph = Paragraph::new(status).style(

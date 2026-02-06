@@ -58,6 +58,9 @@ Example (plugin): register custom commands via `App::register_command_candidate(
 - `:bd [id]` / `:bdelete [id]` — close buffer (current if no id)
 - `:bd! [id]` / `:bdelete! [id]` — force close dirty buffer
 - `:map` — show current keymaps (popover list; press Esc to close)
+- `:perf` — show average render time over recent frames (requires `RVIM_PERF=1`)
+- `:perf detail` — show min/avg/max over recent frames
+- `:perf reset` — clear perf samples
 
 ### Options (`:set`)
 

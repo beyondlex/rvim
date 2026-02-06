@@ -64,6 +64,9 @@ impl App {
             keymap_seq: Vec::new(),
             keymap_debug: false,
             command_keep_open: false,
+            perf_enabled: std::env::var("RVIM_PERF").ok().as_deref() == Some("1"),
+            perf_samples: Vec::new(),
+            perf_max_samples: 120,
             last_search: None,
             search_history: Vec::new(),
             search_history_index: None,
@@ -313,6 +316,45 @@ impl App {
                 self.status_time = None;
             }
         }
+    }
+
+    pub fn push_perf_sample(&mut self, micros: u128) {
+        if !self.perf_enabled {
+            return;
+        }
+        self.perf_samples.push(micros);
+        if self.perf_samples.len() > self.perf_max_samples {
+            let overflow = self.perf_samples.len() - self.perf_max_samples;
+            self.perf_samples.drain(0..overflow);
+        }
+    }
+
+    pub fn perf_average_us(&self) -> Option<u128> {
+        if self.perf_samples.is_empty() {
+            return None;
+        }
+        let sum: u128 = self.perf_samples.iter().sum();
+        Some(sum / self.perf_samples.len() as u128)
+    }
+
+    pub fn perf_stats_us(&self) -> Option<(u128, u128, u128, usize)> {
+        if self.perf_samples.is_empty() {
+            return None;
+        }
+        let mut min = u128::MAX;
+        let mut max = 0u128;
+        let mut sum = 0u128;
+        for &v in &self.perf_samples {
+            if v < min {
+                min = v;
+            }
+            if v > max {
+                max = v;
+            }
+            sum += v;
+        }
+        let avg = sum / self.perf_samples.len() as u128;
+        Some((min, avg, max, self.perf_samples.len()))
     }
 
     pub fn ensure_cursor_visible(&mut self, viewport_rows: usize, viewport_cols: usize) {
@@ -1724,6 +1766,7 @@ fn default_command_candidates() -> Vec<String> {
         "bdelete",
         "bd!",
         "bdelete!",
+        "perf",
         "map",
     ]
     .into_iter()

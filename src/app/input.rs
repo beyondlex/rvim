@@ -3,7 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::fs;
 
 use super::edit::selection_to_last_visual;
-use super::keymap::KeyAction;
+use super::keymap::{KeyAction, KeymapResult};
 use super::types::{
     char_to_byte_idx, CommandPrompt, FindPending, FindSpec, Mode, Operator, OperatorPending,
     RepeatKey, TextObjectKind, TextObjectPending, TextObjectTarget, VisualSelectionKind,
@@ -41,16 +41,18 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
     {
         app.pending_g = false;
     }
-    if app.pending_bracket.is_some()
-        && !(key.code == KeyCode::Char('b') && key.modifiers == KeyModifiers::NONE)
-    {
-        app.pending_bracket = None;
-    }
 
-    if let Some(action) = app.keymaps.action_for(app.mode, &key) {
-        if let Some(should_quit) = apply_keymap_action(app, action)? {
-            return Ok(should_quit);
+    match app
+        .keymaps
+        .action_for_seq(app.mode, &key, &mut app.keymap_seq)
+    {
+        KeymapResult::Matched(action) => {
+            if let Some(should_quit) = apply_keymap_action(app, action)? {
+                return Ok(should_quit);
+            }
         }
+        KeymapResult::Pending => return Ok(false),
+        KeymapResult::NoMatch => {}
     }
 
     if app.mode == Mode::Normal
@@ -168,15 +170,8 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.pending_textobj = None;
                 app.pending_find = None;
                 app.pending_g = false;
-                app.pending_bracket = None;
                 app.last_search = None;
                 app.pending_count = None;
-            }
-            (KeyCode::Char(']'), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
-                app.pending_bracket = Some(']');
-            }
-            (KeyCode::Char('['), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
-                app.pending_bracket = Some('[');
             }
             (KeyCode::Char('.'), KeyModifiers::NONE) => {
                 replay_last_change(app)?;
@@ -391,17 +386,9 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 }
             }
             (KeyCode::Char('b'), KeyModifiers::NONE) => {
-                if app.pending_bracket == Some(']') {
-                    app.pending_bracket = None;
-                    app.switch_next_buffer();
-                } else if app.pending_bracket == Some('[') {
-                    app.pending_bracket = None;
-                    app.switch_prev_buffer();
-                } else {
-                    let count = app.pending_count.take().unwrap_or(1);
-                    for _ in 0..count {
-                        app.move_word_back();
-                    }
+                let count = app.pending_count.take().unwrap_or(1);
+                for _ in 0..count {
+                    app.move_word_back();
                 }
             }
             (KeyCode::Char('e'), KeyModifiers::NONE) => {
@@ -1050,18 +1037,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Char('l'), KeyModifiers::NONE) | (KeyCode::Right, _) => app.move_right(),
             (KeyCode::Char('w'), KeyModifiers::NONE) => app.move_word_forward(),
             (KeyCode::Char('b'), KeyModifiers::NONE) => {
-                app.log_key_event(&format!("pending_bracket check {:?}", app.pending_bracket));
-                if app.pending_bracket == Some(']') {
-                    app.pending_bracket = None;
-                    app.log_key_event("buffer_next");
-                    app.switch_next_buffer();
-                } else if app.pending_bracket == Some('[') {
-                    app.pending_bracket = None;
-                    app.log_key_event("buffer_prev");
-                    app.switch_prev_buffer();
-                } else {
-                    app.move_word_back();
-                }
+                app.move_word_back();
             }
             (KeyCode::Char('e'), KeyModifiers::NONE) => app.move_word_end(),
             (KeyCode::Char('W'), _) => app.move_big_word_forward(),

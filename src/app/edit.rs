@@ -47,7 +47,6 @@ impl App {
             insert_undo_snapshot: false,
             pending_find: None,
             pending_g: false,
-            pending_bracket: None,
             operator_pending: None,
             last_find: None,
             pending_textobj: None,
@@ -62,6 +61,7 @@ impl App {
             command_candidates: default_command_candidates(),
             command_cursor: 0,
             keymaps: super::keymap::Keymaps::default(),
+            keymap_seq: Vec::new(),
             keymap_debug: false,
             last_search: None,
             search_history: Vec::new(),
@@ -189,7 +189,6 @@ impl App {
         self.insert_undo_snapshot = false;
         self.pending_find = None;
         self.pending_g = false;
-        self.pending_bracket = None;
         self.operator_pending = None;
         self.last_find = None;
         self.pending_textobj = None;

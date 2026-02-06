@@ -32,28 +32,50 @@ pub(crate) enum KeyAction {
     BackTab,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub(crate) struct Keymaps {
-    normal: HashMap<KeySpec, KeyAction>,
-    insert: HashMap<KeySpec, KeyAction>,
-    visual: HashMap<KeySpec, KeyAction>,
-    command: HashMap<KeySpec, KeyAction>,
+    normal: HashMap<Vec<KeySpec>, KeyAction>,
+    insert: HashMap<Vec<KeySpec>, KeyAction>,
+    visual: HashMap<Vec<KeySpec>, KeyAction>,
+    command: HashMap<Vec<KeySpec>, KeyAction>,
 }
 
 impl Keymaps {
-    pub(crate) fn action_for(&self, mode: Mode, key: &KeyEvent) -> Option<KeyAction> {
+    pub(crate) fn action_for_seq(
+        &self,
+        mode: Mode,
+        key: &KeyEvent,
+        seq: &mut Vec<KeySpec>,
+    ) -> KeymapResult {
         let spec = KeySpec {
             code: key.code,
             mods: key.modifiers,
         };
-        match mode {
-            Mode::Normal => self.normal.get(&spec).copied(),
-            Mode::Insert => self.insert.get(&spec).copied(),
-            Mode::VisualChar | Mode::VisualLine | Mode::VisualBlock => {
-                self.visual.get(&spec).copied()
-            }
-            Mode::Command => self.command.get(&spec).copied(),
+        let map = match mode {
+            Mode::Normal => &self.normal,
+            Mode::Insert => &self.insert,
+            Mode::VisualChar | Mode::VisualLine | Mode::VisualBlock => &self.visual,
+            Mode::Command => &self.command,
+        };
+        seq.push(spec);
+        if let Some(action) = map.get(seq).copied() {
+            seq.clear();
+            return KeymapResult::Matched(action);
         }
+        if has_prefix(map, seq) {
+            return KeymapResult::Pending;
+        }
+        seq.clear();
+        seq.push(spec);
+        if let Some(action) = map.get(seq).copied() {
+            seq.clear();
+            return KeymapResult::Matched(action);
+        }
+        if has_prefix(map, seq) {
+            return KeymapResult::Pending;
+        }
+        seq.clear();
+        KeymapResult::NoMatch
     }
 
     pub(crate) fn from_config(cfg: Option<&KeymapConfig>) -> (Self, Vec<String>) {
@@ -80,13 +102,31 @@ impl Keymaps {
     }
 }
 
+impl Default for Keymaps {
+    fn default() -> Self {
+        let mut normal = HashMap::new();
+        if let Some(seq) = parse_key_sequence("]b") {
+            normal.insert(seq, KeyAction::BufferNext);
+        }
+        if let Some(seq) = parse_key_sequence("[b") {
+            normal.insert(seq, KeyAction::BufferPrev);
+        }
+        Keymaps {
+            normal,
+            insert: HashMap::new(),
+            visual: HashMap::new(),
+            command: HashMap::new(),
+        }
+    }
+}
+
 fn parse_map(
     map: &HashMap<String, String>,
-    out: &mut HashMap<KeySpec, KeyAction>,
+    out: &mut HashMap<Vec<KeySpec>, KeyAction>,
     errors: &mut Vec<String>,
 ) {
     for (lhs, rhs) in map {
-        let Some(spec) = parse_key_spec(lhs) else {
+        let Some(seq) = parse_key_sequence(lhs) else {
             errors.push(format!("Invalid key: {}", lhs));
             continue;
         };
@@ -94,7 +134,7 @@ fn parse_map(
             errors.push(format!("Invalid action: {}", rhs));
             continue;
         };
-        out.insert(spec, action);
+        out.insert(seq, action);
     }
 }
 
@@ -121,22 +161,43 @@ fn parse_key_action(s: &str) -> Option<KeyAction> {
     }
 }
 
-fn parse_key_spec(raw: &str) -> Option<KeySpec> {
+fn parse_key_sequence(raw: &str) -> Option<Vec<KeySpec>> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;
     }
-    if trimmed.len() == 1 {
-        let ch = trimmed.chars().next()?;
-        return Some(KeySpec {
-            code: KeyCode::Char(ch),
-            mods: KeyModifiers::NONE,
-        });
+    let mut out = Vec::new();
+    let mut iter = trimmed.chars().peekable();
+    while let Some(ch) = iter.peek().copied() {
+        if ch == '<' {
+            let mut token = String::new();
+            token.push(ch);
+            iter.next();
+            while let Some(next) = iter.next() {
+                token.push(next);
+                if next == '>' {
+                    break;
+                }
+            }
+            if !token.ends_with('>') {
+                return None;
+            }
+            let inner = &token[1..token.len() - 1];
+            let spec = parse_bracketed_key(inner)?;
+            out.push(spec);
+        } else {
+            iter.next();
+            out.push(KeySpec {
+                code: KeyCode::Char(ch),
+                mods: KeyModifiers::NONE,
+            });
+        }
     }
-    if trimmed.starts_with('<') && trimmed.ends_with('>') {
-        return parse_bracketed_key(&trimmed[1..trimmed.len() - 1]);
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
     }
-    parse_named_key(trimmed)
 }
 
 fn parse_bracketed_key(raw: &str) -> Option<KeySpec> {
@@ -191,4 +252,14 @@ fn parse_named_key(raw: &str) -> Option<KeySpec> {
         code,
         mods: KeyModifiers::NONE,
     })
+}
+
+fn has_prefix(map: &HashMap<Vec<KeySpec>, KeyAction>, seq: &[KeySpec]) -> bool {
+    map.keys().any(|k| k.len() >= seq.len() && k[..seq.len()] == *seq)
+}
+
+pub(crate) enum KeymapResult {
+    Matched(KeyAction),
+    Pending,
+    NoMatch,
 }

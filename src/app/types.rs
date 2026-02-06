@@ -6,7 +6,7 @@ use crossterm::event::{KeyCode, KeyModifiers};
 
 use super::theme::Theme;
 use super::highlight::SyntaxState;
-use super::keymap::Keymaps;
+use super::keymap::{Keymaps, KeySpec};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -75,7 +75,6 @@ pub struct App {
     pub(crate) insert_undo_snapshot: bool,
     pub(crate) pending_find: Option<FindPending>,
     pub(crate) pending_g: bool,
-    pub(crate) pending_bracket: Option<char>,
     pub(crate) operator_pending: Option<OperatorPending>,
     pub(crate) last_find: Option<FindSpec>,
     pub(crate) pending_textobj: Option<TextObjectPending>,
@@ -90,6 +89,7 @@ pub struct App {
     pub(crate) command_candidates: Vec<String>,
     pub(crate) command_cursor: usize,
     pub(crate) keymaps: Keymaps,
+    pub(crate) keymap_seq: Vec<KeySpec>,
     pub(crate) keymap_debug: bool,
     pub(crate) last_search: Option<SearchSpec>,
     pub(crate) search_history: Vec<String>,

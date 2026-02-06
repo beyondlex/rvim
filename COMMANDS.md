@@ -22,6 +22,7 @@ Keymaps are configured in `rvim.toml` under `[keymap.normal]`, `[keymap.insert]`
 
 Key spec examples:
 - `"x"` (literal character)
+- `"]b"` (multi-key sequence)
 - `"<C-x>"`, `"<M-x>"`, `"<D-x>"`, `"<S-x>"`
 - `"<Left>"`, `"<Right>"`, `"<Backspace>"`, `"<Tab>"`
 

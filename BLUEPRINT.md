@@ -58,6 +58,7 @@ Checklist:
 - [ ] Rope-based buffer (ropey)
 - [x] Undo/redo (command log)
 - [ ] Incremental re-rendering
+- [ ] Incremental parsing (tree.edit + parse(old_tree)) for syntax highlighting
 - [ ] Crash-safe recovery (swap/backup)
 - [ ] Tests for editor core (buffer, cursor, motions)
 

@@ -101,12 +101,58 @@ pub(crate) fn syntax_spans_for_state(
         debug_log(&format!("syntax: sync failed: {}", err));
         return HashMap::new();
     }
-    if state.viewport_tick == edit_tick
-        && state.viewport_start == start_row
-        && state.viewport_rows == rows
-    {
-        return state.viewport_cache.clone();
+    let line_count = lines.len();
+    if line_count == 0 {
+        return HashMap::new();
     }
+    let end_row = (start_row + rows).min(line_count);
+    if state.viewport_tick == edit_tick
+        && state.viewport_start <= start_row
+        && state.viewport_start + state.viewport_rows >= end_row
+    {
+        let mut out: HashMap<usize, Vec<SyntaxSpan>> = HashMap::new();
+        let mut missing_start: Option<usize> = None;
+        let mut missing_len = 0usize;
+        for row in start_row..end_row {
+            if let Some(spans) = state.viewport_cache.get(&row).cloned() {
+                if let Some(ms) = missing_start.take() {
+                    let partial = compute_spans_for_range(state, lines, ms, missing_len, edit_tick);
+                    out.extend(partial);
+                    missing_len = 0;
+                }
+                out.insert(row, spans);
+            } else {
+                if missing_start.is_none() {
+                    missing_start = Some(row);
+                }
+                missing_len += 1;
+            }
+        }
+        if let Some(ms) = missing_start {
+            let partial = compute_spans_for_range(state, lines, ms, missing_len, edit_tick);
+            out.extend(partial);
+        }
+        state.viewport_tick = edit_tick;
+        state.viewport_start = start_row;
+        state.viewport_rows = rows;
+        state.viewport_cache = out.clone();
+        return out;
+    }
+    let out = compute_spans_for_range(state, lines, start_row, rows, edit_tick);
+    state.viewport_tick = edit_tick;
+    state.viewport_start = start_row;
+    state.viewport_rows = rows;
+    state.viewport_cache = out.clone();
+    out
+}
+
+fn compute_spans_for_range(
+    state: &mut SyntaxState,
+    lines: &[String],
+    start_row: usize,
+    rows: usize,
+    edit_tick: u64,
+) -> HashMap<usize, Vec<SyntaxSpan>> {
     let line_count = lines.len();
     if line_count == 0 {
         return HashMap::new();
@@ -192,10 +238,6 @@ pub(crate) fn syntax_spans_for_state(
     } else if out.is_empty() {
         debug_log("syntax: no spans produced for viewport");
     }
-    state.viewport_tick = edit_tick;
-    state.viewport_start = start_row;
-    state.viewport_rows = rows;
-    state.viewport_cache = out.clone();
     out
 }
 

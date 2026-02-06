@@ -1741,6 +1741,7 @@ fn apply_keymap_action(app: &mut App, action: KeyAction) -> Result<Option<bool>>
     match app.mode {
         Mode::Command => {
             match action {
+                KeyAction::NoOp => return Ok(Some(false)),
                 KeyAction::MoveLeft => command_move_left(app),
                 KeyAction::MoveRight => command_move_right(app),
                 KeyAction::MoveWordLeft => command_move_word_left(app),
@@ -1805,6 +1806,7 @@ fn apply_keymap_action(app: &mut App, action: KeyAction) -> Result<Option<bool>>
         }
         Mode::Insert => {
             match action {
+                KeyAction::NoOp => return Ok(Some(false)),
                 KeyAction::MoveLeft => {
                     app.insert_undo_snapshot = false;
                     app.move_left();
@@ -1857,6 +1859,7 @@ fn apply_keymap_action(app: &mut App, action: KeyAction) -> Result<Option<bool>>
         }
         Mode::Normal | Mode::VisualChar | Mode::VisualLine | Mode::VisualBlock => {
             match action {
+                KeyAction::NoOp => return Ok(Some(false)),
                 KeyAction::BufferNext => app.switch_next_buffer(),
                 KeyAction::BufferPrev => app.switch_prev_buffer(),
                 KeyAction::MoveLeft => app.move_left(),

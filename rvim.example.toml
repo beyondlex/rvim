@@ -17,3 +17,10 @@ syntax_number = "#B5CEA8"
 "<M-Right>" = "word_right"
 "<D-Left>" = "line_start"
 "<D-Right>" = "line_end"
+
+[keymap.normal]
+"]b" = "noop"
+"[b" = "noop"
+
+# "]b" = "buffer_next"
+# "[b" = "buffer_prev"

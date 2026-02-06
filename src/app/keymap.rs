@@ -13,6 +13,7 @@ pub(crate) struct KeySpec {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum KeyAction {
+    NoOp,
     BufferNext,
     BufferPrev,
     MoveLeft,
@@ -140,6 +141,7 @@ fn parse_map(
 
 fn parse_key_action(s: &str) -> Option<KeyAction> {
     match s.trim().to_ascii_lowercase().as_str() {
+        "noop" | "no-op" => Some(KeyAction::NoOp),
         "buffer_next" | "bnext" | "bn" => Some(KeyAction::BufferNext),
         "buffer_prev" | "bprev" | "bp" => Some(KeyAction::BufferPrev),
         "left" | "move_left" => Some(KeyAction::MoveLeft),

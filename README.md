@@ -55,6 +55,10 @@ syntax_comment = "#6A9955"
 "<M-Right>" = "word_right"
 "<D-Left>" = "line_start"
 "<D-Right>" = "line_end"
+
+[keymap.normal]
+"]b" = "noop"
+"[b" = "noop"
 ```
 
 ## Logs

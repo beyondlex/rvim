@@ -28,6 +28,7 @@ Key spec examples:
 
 Supported actions:
 - `buffer_next`, `buffer_prev`
+- `noop`
 - `left`, `right`, `up`, `down`
 - `word_left`, `word_right`
 - `line_start`, `line_end`

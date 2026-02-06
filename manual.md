@@ -33,6 +33,7 @@
 ## Keymap
 - Add a `[keymap.command]` section in `rvim.toml`, restart, and verify the mapped key triggers the expected action.
 - Enable `keymap_debug = true` to log key events to `~/.config/rvim/rvim.log`.
+- Use `noop` to disable a default mapping (e.g. `"]b" = "noop"`).
 
 ## :set Completion
 - `:set <Tab>` shows options.

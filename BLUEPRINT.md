@@ -113,6 +113,28 @@ Versioning:
 - PluginApi::version() returns "0.x".
 - Host rejects incompatible plugin versions.
 
+### Plugin System Readiness (Notes)
+
+Is it the right time?
+- Phase 3 still has reliability/perf gaps (rope buffer, incremental render, tests).
+- Plugin system can start in parallel, but should avoid deep core coupling until Phase 3 stabilizes.
+
+Recommended prerequisites before full plugin runtime:
+- Stable buffer model (rope or equivalent) and well-tested cursor/edit primitives.
+- Event model defined (open/save/buffer enter/key/command).
+- Command and keymap registries solidified (already underway).
+- Status message lifecycle clarified (transient vs persistent).
+
+Suggested phased delivery (to resume quickly later):
+1) Define Rust interfaces only (no runtime): PluginHost, PluginApi, Event types.
+2) Add registries for plugin commands/keymaps/status with priority resolution.
+3) Add `:plugins` and `:map` expansions for introspection.
+4) Select runtime (WASM first recommended), define host functions.
+
+Decision pointers:
+- If Phase 3 is active, prioritize correctness and tests.
+- Start plugin work once core edit/undo/redo/motions are stable.
+
 ### Phase 5 — IDE Features (optional)
 Goal: Modern coding features.
 

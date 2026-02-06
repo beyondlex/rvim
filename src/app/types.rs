@@ -95,6 +95,7 @@ pub struct App {
     pub(crate) perf_enabled: bool,
     pub(crate) perf_samples: Vec<u128>,
     pub(crate) perf_max_samples: usize,
+    pub(crate) perf_line_samples: Vec<usize>,
     pub(crate) last_search: Option<SearchSpec>,
     pub(crate) search_history: Vec<String>,
     pub(crate) search_history_index: Option<usize>,

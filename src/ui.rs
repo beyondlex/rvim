@@ -36,6 +36,9 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
     let message_area = rows[2];
 
     let viewport_rows = main_area.height as usize;
+    if app.perf_enabled {
+        app.push_perf_line_sample(viewport_rows);
+    }
     let line_count = app.lines.len().max(1);
     let gutter_width = line_count.to_string().len() + 1;
     let viewport_cols = main_area

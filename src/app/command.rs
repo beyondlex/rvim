@@ -316,9 +316,10 @@ impl App {
                     self.set_status("perf: samples cleared");
                 } else if subcmd == "detail" {
                     if let Some((min, avg, max, n)) = self.perf_stats_us() {
+                        let line_avg = self.perf_line_avg().unwrap_or(0);
                         self.set_status(format!(
-                            "perf min:{}us avg:{}us max:{}us (last {})",
-                            min, avg, max, n
+                            "perf min:{}us avg:{}us max:{}us (last {}) | lines:{}",
+                            min, avg, max, n, line_avg
                         ));
                     } else {
                         self.set_status("perf: no samples yet");

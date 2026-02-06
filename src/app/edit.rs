@@ -67,6 +67,7 @@ impl App {
             perf_enabled: std::env::var("RVIM_PERF").ok().as_deref() == Some("1"),
             perf_samples: Vec::new(),
             perf_max_samples: 120,
+            perf_line_samples: Vec::new(),
             last_search: None,
             search_history: Vec::new(),
             search_history_index: None,
@@ -329,6 +330,17 @@ impl App {
         }
     }
 
+    pub fn push_perf_line_sample(&mut self, lines: usize) {
+        if !self.perf_enabled {
+            return;
+        }
+        self.perf_line_samples.push(lines);
+        if self.perf_line_samples.len() > self.perf_max_samples {
+            let overflow = self.perf_line_samples.len() - self.perf_max_samples;
+            self.perf_line_samples.drain(0..overflow);
+        }
+    }
+
     pub fn perf_average_us(&self) -> Option<u128> {
         if self.perf_samples.is_empty() {
             return None;
@@ -355,6 +367,14 @@ impl App {
         }
         let avg = sum / self.perf_samples.len() as u128;
         Some((min, avg, max, self.perf_samples.len()))
+    }
+
+    pub fn perf_line_avg(&self) -> Option<usize> {
+        if self.perf_line_samples.is_empty() {
+            return None;
+        }
+        let sum: usize = self.perf_line_samples.iter().sum();
+        Some(sum / self.perf_line_samples.len())
     }
 
     pub fn ensure_cursor_visible(&mut self, viewport_rows: usize, viewport_cols: usize) {

@@ -22,7 +22,7 @@
 - Popover shows candidates and highlights current.
 - `:map` shows keymaps in a popover; press Esc to close.
 - `:perf` shows recent render average (enable with `RVIM_PERF=1`).
-- `:perf detail` shows min/avg/max.
+- `:perf detail` shows min/avg/max and average rendered lines.
 - `:perf reset` clears samples.
 
 ## Path Completion

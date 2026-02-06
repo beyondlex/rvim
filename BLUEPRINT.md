@@ -32,7 +32,7 @@ Checklist:
 - [x] Save (Ctrl+S)
 - [x] Quit with dirty confirmation (Ctrl+Q)
 - [x] Basic cursor info + status messages polish
-- [ ] Input edge cases (multi-byte chars, wide glyphs)
+- [~] Input edge cases (multi-byte chars, wide glyphs) — partial coverage via screen-width helpers + tests
 
 ### Phase 2 — Modal Core
 Goal: Minimal Vim-like feel.

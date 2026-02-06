@@ -744,6 +744,17 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                     }
                 }
             }
+            (KeyCode::Char('/'), KeyModifiers::NONE) => {
+                if enter_completion_directory(app) {
+                    app.search_history_index = None;
+                    app.command_history_index = None;
+                } else {
+                    app.command_buffer.push('/');
+                    app.search_history_index = None;
+                    app.command_history_index = None;
+                    app.clear_completion();
+                }
+            }
             (KeyCode::Char(ch), KeyModifiers::NONE) => {
                 app.command_buffer.push(ch);
                 app.search_history_index = None;
@@ -1447,6 +1458,31 @@ fn complete_path_in_command(app: &mut App, reverse: bool) -> bool {
     let first = app.completion_candidates[0].clone();
     app.command_buffer = format!("{}{}", cmd_prefix, first);
     true
+}
+
+fn enter_completion_directory(app: &mut App) -> bool {
+    if !matches!(app.command_prompt, CommandPrompt::Command) {
+        return false;
+    }
+
+    let Some(prefix) = app.completion_cmd_prefix.as_deref() else {
+        return false;
+    };
+    if !matches!(prefix, "e " | "edit " | "w " | "write ") {
+        return false;
+    }
+
+    let idx = app.completion_index.unwrap_or(0);
+    let Some(candidate) = app.completion_candidates.get(idx) else {
+        return false;
+    };
+    if !candidate.ends_with('/') {
+        return false;
+    }
+
+    app.command_buffer = format!("{}{}", prefix, candidate);
+    app.clear_completion();
+    complete_path_in_command(app, false)
 }
 
 fn complete_command_in_command(app: &mut App, reverse: bool) -> bool {

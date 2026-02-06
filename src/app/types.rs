@@ -298,6 +298,38 @@ pub fn char_display_width(ch: char, col: usize, tab_width: usize) -> usize {
     unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0).max(1)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tab_width_matches_expected_columns() {
+        assert_eq!(char_display_width('\t', 0, 4), 4);
+        assert_eq!(char_display_width('\t', 1, 4), 3);
+        assert_eq!(char_display_width('\t', 3, 4), 1);
+    }
+
+    #[test]
+    fn screen_col_round_trip_with_wide_chars() {
+        let line = format!("a{}b", "\u{4E2D}");
+        assert_eq!(char_to_screen_col(&line, 0, 4), 0);
+        assert_eq!(char_to_screen_col(&line, 1, 4), 1);
+        assert_eq!(char_to_screen_col(&line, 2, 4), 3);
+        assert_eq!(char_to_screen_col(&line, 3, 4), 4);
+
+        assert_eq!(screen_col_to_char_idx(&line, 0, 4), 0);
+        assert_eq!(screen_col_to_char_idx(&line, 1, 4), 1);
+        assert_eq!(screen_col_to_char_idx(&line, 2, 4), 1);
+        assert_eq!(screen_col_to_char_idx(&line, 3, 4), 2);
+    }
+
+    #[test]
+    fn line_screen_width_accounts_for_tabs() {
+        let line = "a\tb";
+        assert_eq!(line_screen_width(line, 4), 5);
+    }
+}
+
 pub(super) fn normalize_range(
     a: (usize, usize),
     b: (usize, usize),

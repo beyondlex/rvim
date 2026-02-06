@@ -1385,6 +1385,13 @@ fn command_insert_char(app: &mut App, ch: char) {
 
 fn command_backspace(app: &mut App) {
     if app.command_cursor == 0 {
+        if app.command_buffer.is_empty() {
+            app.mode = Mode::Normal;
+            app.command_prompt = CommandPrompt::Command;
+            app.search_history_index = None;
+            app.command_history_index = None;
+            app.clear_completion();
+        }
         return;
     }
     let start = app.command_cursor - 1;
@@ -1392,6 +1399,13 @@ fn command_backspace(app: &mut App) {
     let end_byte = char_to_byte_idx(&app.command_buffer, app.command_cursor);
     app.command_buffer.replace_range(start_byte..end_byte, "");
     app.command_cursor = start;
+    if app.command_buffer.is_empty() {
+        app.mode = Mode::Normal;
+        app.command_prompt = CommandPrompt::Command;
+        app.search_history_index = None;
+        app.command_history_index = None;
+        app.clear_completion();
+    }
 }
 
 fn is_command_word_sep(ch: char) -> bool {

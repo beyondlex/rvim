@@ -3,6 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::fs;
 
 use super::edit::selection_to_last_visual;
+use super::keymap::KeyAction;
 use super::types::{
     char_to_byte_idx, CommandPrompt, FindPending, FindSpec, Mode, Operator, OperatorPending,
     RepeatKey, TextObjectKind, TextObjectPending, TextObjectTarget, VisualSelectionKind,
@@ -35,6 +36,12 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
         && key.modifiers == KeyModifiers::NONE
     {
         app.pending_g = false;
+    }
+
+    if let Some(action) = app.keymaps.action_for(app.mode, &key) {
+        if let Some(should_quit) = apply_keymap_action(app, action)? {
+            return Ok(should_quit);
+        }
     }
 
     if app.mode == Mode::Normal
@@ -1715,6 +1722,155 @@ fn complete_command_in_command(app: &mut App, reverse: bool) -> bool {
     app.command_buffer = first;
     command_cursor_to_end(app);
     true
+}
+
+fn apply_keymap_action(app: &mut App, action: KeyAction) -> Result<Option<bool>> {
+    match app.mode {
+        Mode::Command => {
+            match action {
+                KeyAction::MoveLeft => command_move_left(app),
+                KeyAction::MoveRight => command_move_right(app),
+                KeyAction::MoveWordLeft => command_move_word_left(app),
+                KeyAction::MoveWordRight => command_move_word_right(app),
+                KeyAction::MoveLineStart => command_move_line_start(app),
+                KeyAction::MoveLineEnd => command_move_line_end(app),
+                KeyAction::Backspace => command_backspace(app),
+                KeyAction::DeleteWord => command_delete_prev_word(app),
+                KeyAction::DeleteLineStart => command_delete_to_line_start(app),
+                KeyAction::Enter => {
+                    let should_quit = if matches!(app.command_prompt, CommandPrompt::Command) {
+                        app.execute_command()?
+                    } else {
+                        app.execute_search()?
+                    };
+                    app.command_buffer.clear();
+                    app.command_cursor = 0;
+                    app.mode = Mode::Normal;
+                    app.command_prompt = CommandPrompt::Command;
+                    app.search_history_index = None;
+                    app.command_history_index = None;
+                    app.clear_completion();
+                    if should_quit {
+                        return Ok(Some(true));
+                    }
+                    return Ok(Some(false));
+                }
+                KeyAction::Escape => {
+                    app.mode = Mode::Normal;
+                    app.command_buffer.clear();
+                    app.command_cursor = 0;
+                    app.command_prompt = CommandPrompt::Command;
+                    app.search_history_index = None;
+                    app.command_history_index = None;
+                    app.clear_completion();
+                    return Ok(Some(false));
+                }
+                KeyAction::Tab => {
+                    if complete_path_in_command(app, false)
+                        || complete_set_in_command(app, false)
+                        || complete_command_in_command(app, false)
+                    {
+                        app.search_history_index = None;
+                    }
+                    return Ok(Some(false));
+                }
+                KeyAction::BackTab => {
+                    if complete_path_in_command(app, true)
+                        || complete_set_in_command(app, true)
+                        || complete_command_in_command(app, true)
+                    {
+                        app.search_history_index = None;
+                    }
+                    return Ok(Some(false));
+                }
+                _ => {}
+            }
+            app.search_history_index = None;
+            app.command_history_index = None;
+            app.clear_completion();
+            Ok(Some(false))
+        }
+        Mode::Insert => {
+            match action {
+                KeyAction::MoveLeft => {
+                    app.insert_undo_snapshot = false;
+                    app.move_left();
+                }
+                KeyAction::MoveRight => {
+                    app.insert_undo_snapshot = false;
+                    app.move_right();
+                }
+                KeyAction::MoveUp => {
+                    app.insert_undo_snapshot = false;
+                    app.move_up();
+                }
+                KeyAction::MoveDown => {
+                    app.insert_undo_snapshot = false;
+                    app.move_down();
+                }
+                KeyAction::MoveWordLeft => {
+                    app.insert_undo_snapshot = false;
+                    app.move_word_back();
+                }
+                KeyAction::MoveWordRight => {
+                    app.insert_undo_snapshot = false;
+                    app.move_word_forward();
+                }
+                KeyAction::MoveLineStart => {
+                    app.insert_undo_snapshot = false;
+                    app.move_line_start();
+                }
+                KeyAction::MoveLineEnd => {
+                    app.insert_undo_snapshot = false;
+                    app.move_line_end();
+                }
+                KeyAction::Backspace => {
+                    app.insert_undo_snapshot = false;
+                    app.backspace();
+                }
+                KeyAction::Enter => {
+                    app.insert_undo_snapshot = false;
+                    app.insert_newline();
+                }
+                KeyAction::Escape => {
+                    app.mode = Mode::Normal;
+                    app.block_insert = None;
+                    app.insert_undo_snapshot = false;
+                    app.set_status("-- NORMAL --");
+                }
+                _ => return Ok(None),
+            }
+            Ok(Some(false))
+        }
+        Mode::Normal | Mode::VisualChar | Mode::VisualLine | Mode::VisualBlock => {
+            match action {
+                KeyAction::MoveLeft => app.move_left(),
+                KeyAction::MoveRight => app.move_right(),
+                KeyAction::MoveUp => app.move_up(),
+                KeyAction::MoveDown => app.move_down(),
+                KeyAction::MoveWordLeft => app.move_word_back(),
+                KeyAction::MoveWordRight => app.move_word_forward(),
+                KeyAction::MoveLineStart => app.move_line_start(),
+                KeyAction::MoveLineEnd => app.move_line_end(),
+                KeyAction::Escape => {
+                    if !matches!(app.mode, Mode::Normal) {
+                        exit_visual(app);
+                    }
+                }
+                _ => return Ok(None),
+            }
+            Ok(Some(false))
+        }
+    }
+}
+
+fn exit_visual(app: &mut App) {
+    if let Some(selection) = app.visual_selection() {
+        app.last_visual = Some(selection_to_last_visual(selection, app.mode));
+    }
+    app.mode = Mode::Normal;
+    app.visual_start = None;
+    app.set_status("-- NORMAL --");
 }
 
 pub(crate) fn expand_tilde(input: &str) -> (String, bool) {

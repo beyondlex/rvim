@@ -29,6 +29,9 @@
 - Directory candidates display as `name/` and popover anchor is stable.
 - When the popover is open and a directory is selected, press `/` to enter it and list its contents.
 
+## Keymap
+- Add a `[keymap.command]` section in `rvim.toml`, restart, and verify the mapped key triggers the expected action.
+
 ## :set Completion
 - `:set <Tab>` shows options.
 - `:set theme=<Tab>` cycles theme names (including overrides).

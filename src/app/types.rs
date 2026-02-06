@@ -6,6 +6,7 @@ use crossterm::event::{KeyCode, KeyModifiers};
 
 use super::theme::Theme;
 use super::highlight::SyntaxState;
+use super::keymap::Keymaps;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -87,6 +88,7 @@ pub struct App {
     pub(crate) command_history_index: Option<usize>,
     pub(crate) command_candidates: Vec<String>,
     pub(crate) command_cursor: usize,
+    pub(crate) keymaps: Keymaps,
     pub(crate) last_search: Option<SearchSpec>,
     pub(crate) search_history: Vec<String>,
     pub(crate) search_history_index: Option<usize>,

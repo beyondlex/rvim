@@ -8,3 +8,10 @@ syntax_comment = "#6A9955"
 syntax_function = "#DCDCAA"
 syntax_type = "#4EC9B0"
 syntax_number = "#B5CEA8"
+
+[keymap.command]
+"<M-Backspace>" = "delete_word"
+"<M-Left>" = "word_left"
+"<M-Right>" = "word_right"
+"<D-Left>" = "line_start"
+"<D-Right>" = "line_end"

@@ -14,6 +14,25 @@ Command-line editing (command and search prompts):
 - `Alt+←/→` or `Ctrl+←/→` moves by word (word boundaries treat `/` as a separator).
 - `Cmd+←/→` moves to line start/end (when the terminal sends it).
 - Terminal paste (bracketed paste) inserts into the command/search prompt.
+
+## Keymap
+
+Keymaps are configured in `rvim.toml` under `[keymap.normal]`, `[keymap.insert]`,
+`[keymap.visual]`, and `[keymap.command]`. The keys are key specs and the values are actions.
+
+Key spec examples:
+- `"x"` (literal character)
+- `"<C-x>"`, `"<M-x>"`, `"<D-x>"`, `"<S-x>"`
+- `"<Left>"`, `"<Right>"`, `"<Backspace>"`, `"<Tab>"`
+
+Supported actions:
+- `left`, `right`, `up`, `down`
+- `word_left`, `word_right`
+- `line_start`, `line_end`
+- `backspace`, `delete_word`, `delete_line_start`
+- `enter`, `escape`, `tab`, `backtab`
+
+Note: Actions are applied per mode; unsupported actions are ignored.
 Example (plugin): register custom commands via `App::register_command_candidate("MyCmd")`.
 
 ### File commands

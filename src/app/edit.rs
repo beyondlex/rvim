@@ -58,6 +58,7 @@ impl App {
             command_history_index: None,
             command_candidates: default_command_candidates(),
             command_cursor: 0,
+            keymaps: super::keymap::Keymaps::default(),
             last_search: None,
             search_history: Vec::new(),
             search_history_index: None,
@@ -238,6 +239,11 @@ impl App {
             if let Some(theme) = super::theme::Theme::from_name(name) {
                 self.set_theme_named(name, theme);
             }
+        }
+        let (keymaps, errors) = super::keymap::Keymaps::from_config(config.keymap.as_ref());
+        self.keymaps = keymaps;
+        if let Some(err) = errors.first() {
+            self.set_status(format!("Keymap error: {}", err));
         }
     }
 

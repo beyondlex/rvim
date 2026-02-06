@@ -3,6 +3,7 @@ mod config;
 mod edit;
 mod highlight;
 mod input;
+mod keymap;
 mod motion;
 mod theme;
 mod types;

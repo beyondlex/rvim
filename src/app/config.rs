@@ -12,6 +12,7 @@ use super::theme::Theme;
 pub struct Config {
     pub(crate) theme: Option<String>,
     pub(crate) themes: Option<HashMap<String, ThemeOverride>>,
+    pub(crate) keymap: Option<KeymapConfig>,
 }
 
 pub fn load_config() -> Result<Config> {
@@ -57,6 +58,14 @@ pub(crate) struct ThemeOverride {
     pub(crate) syntax_macro: Option<String>,
     pub(crate) syntax_attribute: Option<String>,
     pub(crate) syntax_punctuation: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+pub(crate) struct KeymapConfig {
+    pub(crate) normal: Option<HashMap<String, String>>,
+    pub(crate) insert: Option<HashMap<String, String>>,
+    pub(crate) visual: Option<HashMap<String, String>>,
+    pub(crate) command: Option<HashMap<String, String>>,
 }
 
 pub(crate) fn apply_theme_overrides(theme: &mut Theme, overrides: &ThemeOverride) {

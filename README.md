@@ -47,6 +47,13 @@ current_line_bg = "#464646"
 syntax_keyword = "#569CD6"
 syntax_string = "#6A9955"
 syntax_comment = "#6A9955"
+
+[keymap.command]
+"<M-Backspace>" = "delete_word"
+"<M-Left>" = "word_left"
+"<M-Right>" = "word_right"
+"<D-Left>" = "line_start"
+"<D-Right>" = "line_end"
 ```
 
 ## Logs

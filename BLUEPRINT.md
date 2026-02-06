@@ -69,6 +69,9 @@ Checklist:
 - [ ] Plugin API (Rust trait or WASM)
 - [ ] Event hooks (on save, on open, on key)
 - [ ] Theme support
+- [ ] Plugin API: commands registration/query
+- [ ] Plugin API: buffer list/query
+- [ ] Plugin API: status hooks (status line + transient messages)
 
 ### Phase 5 — IDE Features (optional)
 Goal: Modern coding features.

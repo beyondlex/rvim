@@ -41,6 +41,14 @@ pub(crate) struct Keymaps {
     command: HashMap<Vec<KeySpec>, KeyAction>,
 }
 
+#[derive(Debug, Clone)]
+pub struct KeymapEntry {
+    pub mode: &'static str,
+    pub lhs: String,
+    pub action: String,
+    pub description: Option<&'static str>,
+}
+
 impl Keymaps {
     pub(crate) fn action_for_seq(
         &self,
@@ -303,6 +311,23 @@ impl Keymaps {
         }
         lines
     }
+
+    pub fn entries(&self, mode: Option<&'static str>) -> Vec<KeymapEntry> {
+        let mut out = Vec::new();
+        if mode.is_none() || mode == Some("normal") {
+            out.extend(entries_for_mode("normal", &self.normal));
+        }
+        if mode.is_none() || mode == Some("insert") {
+            out.extend(entries_for_mode("insert", &self.insert));
+        }
+        if mode.is_none() || mode == Some("visual") {
+            out.extend(entries_for_mode("visual", &self.visual));
+        }
+        if mode.is_none() || mode == Some("command") {
+            out.extend(entries_for_mode("command", &self.command));
+        }
+        out
+    }
 }
 
 fn format_map(map: &HashMap<Vec<KeySpec>, KeyAction>) -> String {
@@ -360,6 +385,17 @@ fn format_map_lines(label: &str, map: &HashMap<Vec<KeySpec>, KeyAction>) -> Vec<
                 lhs_width = lhs_width,
                 name_width = name_width
             )
+        })
+        .collect()
+}
+
+fn entries_for_mode(label: &'static str, map: &HashMap<Vec<KeySpec>, KeyAction>) -> Vec<KeymapEntry> {
+    map.iter()
+        .map(|(seq, action)| KeymapEntry {
+            mode: label,
+            lhs: format_sequence(seq),
+            action: action_name(*action),
+            description: action_description(*action),
         })
         .collect()
 }

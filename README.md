@@ -61,6 +61,21 @@ syntax_comment = "#6A9955"
 "[b" = "noop"
 ```
 
+## Plugin API (Reserved)
+
+These APIs are reserved for future plugin support. They may change, but provide
+structured access to keymaps today:
+
+- `App::keymap_entries(mode: Option<&'static str>) -> Vec<KeymapEntry>`
+- `KeymapEntry { mode, lhs, action, description }`
+
+Example (internal usage):
+
+```rust
+let all = app.keymap_entries(None);
+let normal = app.keymap_entries(Some("normal"));
+```
+
 ## Logs
 
 Panics and runtime errors (e.g. save failures) are appended to:

@@ -280,6 +280,10 @@ impl App {
         }
     }
 
+    pub fn keymap_entries(&self, mode: Option<&'static str>) -> Vec<super::keymap::KeymapEntry> {
+        self.keymaps.entries(mode)
+    }
+
     #[allow(dead_code)]
     pub fn set_theme(&mut self, theme: super::theme::Theme) {
         self.theme = theme;

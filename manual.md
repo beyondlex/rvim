@@ -24,6 +24,7 @@
 - `:perf` shows recent render average (enable with `RVIM_PERF=1`).
 - `:perf detail` shows min/avg/max and average rendered lines.
 - `:perf reset` clears samples.
+- `:syntax on|off` toggles syntax highlighting (useful for perf testing).
 
 ## Path Completion
 - `:e<Tab>` cycles current dir entries.

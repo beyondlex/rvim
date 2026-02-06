@@ -68,6 +68,9 @@ impl App {
             perf_samples: Vec::new(),
             perf_max_samples: 120,
             perf_line_samples: Vec::new(),
+            perf_highlight_samples: Vec::new(),
+            perf_render_samples: Vec::new(),
+            syntax_enabled: true,
             last_search: None,
             search_history: Vec::new(),
             search_history_index: None,
@@ -341,6 +344,28 @@ impl App {
         }
     }
 
+    pub fn push_perf_highlight_sample(&mut self, micros: u128) {
+        if !self.perf_enabled {
+            return;
+        }
+        self.perf_highlight_samples.push(micros);
+        if self.perf_highlight_samples.len() > self.perf_max_samples {
+            let overflow = self.perf_highlight_samples.len() - self.perf_max_samples;
+            self.perf_highlight_samples.drain(0..overflow);
+        }
+    }
+
+    pub fn push_perf_render_sample(&mut self, micros: u128) {
+        if !self.perf_enabled {
+            return;
+        }
+        self.perf_render_samples.push(micros);
+        if self.perf_render_samples.len() > self.perf_max_samples {
+            let overflow = self.perf_render_samples.len() - self.perf_max_samples;
+            self.perf_render_samples.drain(0..overflow);
+        }
+    }
+
     pub fn perf_average_us(&self) -> Option<u128> {
         if self.perf_samples.is_empty() {
             return None;
@@ -375,6 +400,22 @@ impl App {
         }
         let sum: usize = self.perf_line_samples.iter().sum();
         Some(sum / self.perf_line_samples.len())
+    }
+
+    pub fn perf_highlight_avg_us(&self) -> Option<u128> {
+        if self.perf_highlight_samples.is_empty() {
+            return None;
+        }
+        let sum: u128 = self.perf_highlight_samples.iter().sum();
+        Some(sum / self.perf_highlight_samples.len() as u128)
+    }
+
+    pub fn perf_render_avg_us(&self) -> Option<u128> {
+        if self.perf_render_samples.is_empty() {
+            return None;
+        }
+        let sum: u128 = self.perf_render_samples.iter().sum();
+        Some(sum / self.perf_render_samples.len() as u128)
     }
 
     pub fn ensure_cursor_visible(&mut self, viewport_rows: usize, viewport_cols: usize) {
@@ -1788,6 +1829,7 @@ fn default_command_candidates() -> Vec<String> {
         "bdelete!",
         "perf",
         "map",
+        "syntax",
     ]
     .into_iter()
     .map(|s| s.to_string())

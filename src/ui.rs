@@ -25,6 +25,7 @@ pub fn apply_cursor_style(app: &App) -> Result<()> {
 
 pub fn ui(f: &mut Frame<'_>, app: &mut App) {
     let perf_start = if app.perf_enabled { Some(Instant::now()) } else { None };
+    let perf_highlight_start = if app.perf_enabled { Some(Instant::now()) } else { None };
     let size = f.area();
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -49,7 +50,14 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
 
     let mut text_lines: Vec<Line> = Vec::with_capacity(viewport_rows);
     let selection = app.visual_selection();
-    let syntax = app.syntax_spans_for_viewport(app.scroll_row, viewport_rows);
+    let syntax = if app.syntax_enabled {
+        app.syntax_spans_for_viewport(app.scroll_row, viewport_rows)
+    } else {
+        None
+    };
+    if let Some(start) = perf_highlight_start {
+        app.push_perf_highlight_sample(start.elapsed().as_micros());
+    }
     let debug_syntax = std::env::var("RVIM_DEBUG_SYNTAX").ok().as_deref() == Some("1");
     for i in 0..viewport_rows {
         let idx = app.scroll_row + i;
@@ -131,6 +139,7 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
         let micros = start.elapsed().as_micros();
         status.push_str(&format!(" | render:{}us", micros));
         app.push_perf_sample(micros);
+        app.push_perf_render_sample(micros);
     }
 
     let status_paragraph = Paragraph::new(status).style(

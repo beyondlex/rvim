@@ -61,6 +61,7 @@ Example (plugin): register custom commands via `App::register_command_candidate(
 - `:perf` — show average render time over recent frames (requires `RVIM_PERF=1`)
 - `:perf detail` — show min/avg/max and average rendered lines
 - `:perf reset` — clear perf samples
+- `:syntax on|off` — toggle syntax highlighting
 
 ### Options (`:set`)
 

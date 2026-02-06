@@ -313,13 +313,18 @@ impl App {
                     self.set_status("perf disabled (set RVIM_PERF=1)");
                 } else if subcmd == "reset" {
                     self.perf_samples.clear();
+                    self.perf_render_samples.clear();
+                    self.perf_highlight_samples.clear();
+                    self.perf_line_samples.clear();
                     self.set_status("perf: samples cleared");
                 } else if subcmd == "detail" {
                     if let Some((min, avg, max, n)) = self.perf_stats_us() {
                         let line_avg = self.perf_line_avg().unwrap_or(0);
+                        let render_avg = self.perf_render_avg_us().unwrap_or(0);
+                        let hl_avg = self.perf_highlight_avg_us().unwrap_or(0);
                         self.set_status(format!(
-                            "perf min:{}us avg:{}us max:{}us (last {}) | lines:{}",
-                            min, avg, max, n, line_avg
+                            "perf min:{}us avg:{}us max:{}us (last {}) | lines:{} render:{}us hl:{}us",
+                            min, avg, max, n, line_avg, render_avg, hl_avg
                         ));
                     } else {
                         self.set_status("perf: no samples yet");
@@ -332,6 +337,22 @@ impl App {
                     ));
                 } else {
                     self.set_status("perf: no samples yet");
+                }
+            }
+            "syntax" => {
+                let subcmd = arg.as_deref().unwrap_or("");
+                match subcmd {
+                    "on" => {
+                        self.syntax_enabled = true;
+                        self.set_status("syntax on");
+                    }
+                    "off" => {
+                        self.syntax_enabled = false;
+                        self.set_status("syntax off");
+                    }
+                    _ => {
+                        self.set_status("Usage: :syntax on|off");
+                    }
                 }
             }
             "bd" | "bdelete" => {

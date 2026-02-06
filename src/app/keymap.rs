@@ -314,6 +314,42 @@ mod tests {
         let res = keymaps.action_for_seq(Mode::Normal, &key_event('b'), &mut seq);
         assert!(matches!(res, KeymapResult::NoMatch));
     }
+
+    #[test]
+    fn parse_config_multi_key_sequences() {
+        let mut cfg = KeymapConfig::default();
+        let mut normal = HashMap::new();
+        normal.insert("]b".to_string(), "buffer_next".to_string());
+        normal.insert("[b".to_string(), "buffer_prev".to_string());
+        normal.insert("gh".to_string(), "left".to_string());
+        cfg.normal = Some(normal);
+
+        let (keymaps, errors) = Keymaps::from_config(Some(&cfg));
+        assert!(errors.is_empty());
+
+        let mut seq = Vec::new();
+        let res = keymaps.action_for_seq(Mode::Normal, &key_event(']'), &mut seq);
+        assert!(matches!(res, KeymapResult::Pending));
+        let res = keymaps.action_for_seq(Mode::Normal, &key_event('b'), &mut seq);
+        assert!(matches!(res, KeymapResult::Matched(KeyAction::BufferNext)));
+
+        let res = keymaps.action_for_seq(Mode::Normal, &key_event('g'), &mut seq);
+        assert!(matches!(res, KeymapResult::Pending));
+        let res = keymaps.action_for_seq(Mode::Normal, &key_event('h'), &mut seq);
+        assert!(matches!(res, KeymapResult::Matched(KeyAction::MoveLeft)));
+    }
+
+    #[test]
+    fn parse_config_reports_invalid_entries() {
+        let mut cfg = KeymapConfig::default();
+        let mut normal = HashMap::new();
+        normal.insert("<C-".to_string(), "left".to_string());
+        normal.insert("x".to_string(), "not_an_action".to_string());
+        cfg.normal = Some(normal);
+
+        let (_keymaps, errors) = Keymaps::from_config(Some(&cfg));
+        assert_eq!(errors.len(), 2);
+    }
 }
 
 impl Keymaps {

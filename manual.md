@@ -13,7 +13,7 @@
 - Run a few commands (e.g. `:set rnu`, `:set nornu`, `:w`).
 - In command mode, ↑/↓ navigates history.
 - Typing or backspace clears history index.
-- Command/search line editing: `Alt`/`Ctrl`+`Backspace` deletes a word, `Alt`/`Ctrl`+`←/→` moves by word (word boundaries treat `/` as a separator), and `Cmd+Backspace` or `Cmd+←/→` go to line start/end (when your terminal sends those keys).
+- Command/search line editing: `Alt`/`Ctrl`+`Backspace` deletes a word, `Alt`/`Ctrl`+`←/→` moves by word (word boundaries treat `/` as a separator), `Cmd+Backspace` or `Cmd+←/→` go to line start/end (when your terminal sends those keys). Terminal paste (bracketed paste) inserts into the prompt.
 
 ## Command Completion
 - `:` then `Tab/Shift-Tab` cycles command names.

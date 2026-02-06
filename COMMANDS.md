@@ -13,6 +13,7 @@ Command-line editing (command and search prompts):
 - `Cmd+Backspace` deletes to line start (when the terminal sends it).
 - `Alt+←/→` or `Ctrl+←/→` moves by word (word boundaries treat `/` as a separator).
 - `Cmd+←/→` moves to line start/end (when the terminal sends it).
+- Terminal paste (bracketed paste) inserts into the command/search prompt.
 Example (plugin): register custom commands via `App::register_command_candidate("MyCmd")`.
 
 ### File commands

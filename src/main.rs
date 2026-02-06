@@ -69,6 +69,11 @@ fn main() -> Result<()> {
                 Event::Paste(text) => {
                     if app.mode == Mode::Insert {
                         app.insert_text(&text);
+                    } else if app.mode == Mode::Command {
+                        app.insert_command_text(&text);
+                        app.clear_completion();
+                        app.search_history_index = None;
+                        app.command_history_index = None;
                     }
                 }
                 _ => {}

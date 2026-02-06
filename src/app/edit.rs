@@ -206,6 +206,23 @@ impl App {
         self.completion_anchor_col = None;
     }
 
+    pub fn insert_command_text(&mut self, text: &str) {
+        if !matches!(self.command_prompt, CommandPrompt::Command | CommandPrompt::SearchForward | CommandPrompt::SearchBackward) {
+            return;
+        }
+        if text.is_empty() {
+            return;
+        }
+        let sanitized = text.replace(['\r', '\n', '\t'], " ");
+        if sanitized.is_empty() {
+            return;
+        }
+        let idx = self.command_cursor.min(self.command_buffer.chars().count());
+        let byte_idx = char_to_byte_idx(&self.command_buffer, idx);
+        self.command_buffer.insert_str(byte_idx, &sanitized);
+        self.command_cursor = idx + sanitized.chars().count();
+    }
+
     #[allow(dead_code)]
     pub fn register_command_candidate(&mut self, name: impl Into<String>) {
         let name = name.into();

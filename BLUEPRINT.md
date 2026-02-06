@@ -73,6 +73,46 @@ Checklist:
 - [ ] Plugin API: buffer list/query
 - [ ] Plugin API: status hooks (status line + transient messages)
 
+### Plugin System Design (Draft)
+
+Goals:
+- Stable, versioned API with backward compatibility expectations.
+- Clear separation between host and plugin runtime.
+- Safe defaults (sandboxed when possible).
+- Extensible registry for commands, keymaps, and status hooks.
+
+Core components:
+- PluginHost: loads plugins, manages lifecycle, dispatches events.
+- PluginApi: stable interface exposed to plugins (host functions for WASM/Lua).
+- Registries: commands, keymaps, status providers.
+- Event bus: on_open, on_save, on_buffer_enter, on_key, on_command.
+
+Proposed API surface (host-facing, versioned):
+- Query: list_buffers, current_buffer, get_buffer_text (range)
+- Mutation: open_buffer, switch_buffer, apply_edit, set_status
+- Registration: register_command, register_keymap, register_status
+- Events: on_event(event, handler)
+
+Runtime plan:
+- Phase A: Rust trait-based plugins (internal) for rapid iteration.
+- Phase B: WASM runtime (wasmtime/wasmer) with host functions.
+- Optional: Lua runtime for Neovim-like plugin authoring.
+
+Config discovery (rvim.toml):
+- [plugins] enabled = ["path/to/plugin.wasm", "..."]
+- [plugin_settings.<name>] for plugin options
+
+Keymap/command precedence:
+- plugin > user > builtin
+
+Status hooks:
+- Plugins can register status items with priority.
+- Host composes status line items deterministically.
+
+Versioning:
+- PluginApi::version() returns "0.x".
+- Host rejects incompatible plugin versions.
+
 ### Phase 5 — IDE Features (optional)
 Goal: Modern coding features.
 

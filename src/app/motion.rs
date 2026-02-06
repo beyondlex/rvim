@@ -1,4 +1,4 @@
-use super::types::{char_class, CharClass, VisualSelection, VisualSelectionKind};
+use super::types::{char_class, CharClass};
 use super::App;
 
 impl App {

@@ -47,7 +47,6 @@ pub(crate) struct SyntaxState {
     query: Query,
     inline_parser: Option<Parser>,
     inline_query: Option<Query>,
-    inline_query_key: Option<String>,
     source: String,
     line_offsets: Vec<usize>,
     cache_tick: u64,
@@ -63,7 +62,7 @@ struct LanguageSpec {
     default_query: Option<&'static str>,
 }
 
-pub(crate) fn detect_language(path: &Option<PathBuf>) -> Option<LanguageSpec> {
+fn detect_language(path: &Option<PathBuf>) -> Option<LanguageSpec> {
     let ext = path
         .as_ref()
         .and_then(|p| p.extension())
@@ -321,7 +320,7 @@ impl App {
 }
 
 impl SyntaxState {
-    pub(crate) fn new(spec: LanguageSpec, query: QuerySource) -> Result<Self> {
+    fn new(spec: LanguageSpec, query: QuerySource) -> Result<Self> {
         let mut parser = Parser::new();
         parser
             .set_language(&spec.language)
@@ -329,29 +328,29 @@ impl SyntaxState {
         let query_key = query.key.clone();
         let query = Query::new(&spec.language, &query.text)
             .map_err(|err| anyhow::anyhow!("compile query: {}", err))?;
-        let (inline_parser, inline_query, inline_query_key) = if spec.name == "markdown" {
+        let (inline_parser, inline_query) = if spec.name == "markdown" {
             match load_markdown_inline_query() {
                 Some(inline) => {
                     let mut parser = Parser::new();
                     match parser.set_language(&tree_sitter_md::INLINE_LANGUAGE.into()) {
                         Ok(_) => match Query::new(&tree_sitter_md::INLINE_LANGUAGE.into(), &inline.text)
                         {
-                            Ok(query) => (Some(parser), Some(query), Some(inline.key)),
+                            Ok(query) => (Some(parser), Some(query)),
                             Err(err) => {
                                 debug_log(&format!("syntax: markdown inline query failed: {}", err));
-                                (None, None, None)
+                                (None, None)
                             }
                         },
                         Err(err) => {
                             debug_log(&format!("syntax: markdown inline language failed: {}", err));
-                            (None, None, None)
+                            (None, None)
                         }
                     }
                 }
-                None => (None, None, None),
+                None => (None, None),
             }
         } else {
-            (None, None, None)
+            (None, None)
         };
         Ok(Self {
             language_name: spec.name,
@@ -361,7 +360,6 @@ impl SyntaxState {
             query,
             inline_parser,
             inline_query,
-            inline_query_key,
             source: String::new(),
             line_offsets: Vec::new(),
             cache_tick: u64::MAX,
@@ -462,7 +460,7 @@ fn language_specs() -> Vec<LanguageSpec> {
     ]
 }
 
-pub(crate) fn load_query_for_language(spec: &LanguageSpec) -> Option<QuerySource> {
+fn load_query_for_language(spec: &LanguageSpec) -> Option<QuerySource> {
     if let Some(q) = load_query_from_paths(spec.name) {
         return Some(q);
     }
@@ -497,7 +495,7 @@ fn load_query_from_paths(lang: &str) -> Option<QuerySource> {
     None
 }
 
-pub(crate) fn ensure_syntax_state(
+fn ensure_syntax_state(
     map: &mut HashMap<usize, SyntaxState>,
     buffer_id: usize,
     spec: LanguageSpec,

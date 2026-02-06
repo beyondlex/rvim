@@ -7,7 +7,7 @@ use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
-use crate::app::{App, CommandPrompt, HighlightKind, Mode, SyntaxSpan, VisualSelection, VisualSelectionKind, total_spans, detect_language_name, has_query_for_language};
+use crate::app::{App, CommandPrompt, HighlightKind, Mode, SyntaxSpan, VisualSelection, VisualSelectionKind, total_spans};
 use crate::app::{char_display_width, char_to_screen_col, line_screen_width};
 
 pub fn apply_cursor_style(app: &App) -> Result<()> {
@@ -167,21 +167,6 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
             f.set_cursor_position(Position::new(cursor_x, cursor_y));
         }
     }
-}
-
-fn slice_line(line: &str, start_col: usize, max_cols: usize) -> String {
-    let mut out = String::new();
-    let mut col = 0;
-    for ch in line.chars() {
-        if col >= start_col && out.chars().count() < max_cols {
-            out.push(ch);
-        }
-        col += 1;
-        if out.chars().count() >= max_cols {
-            break;
-        }
-    }
-    out
 }
 
 fn render_completion_popover(f: &mut Frame<'_>, app: &App, main_area: Rect, message_area: Rect) {
@@ -440,7 +425,7 @@ fn render_line_with_selection(
     },
 ));
 
-    let mut is_selected = |c: usize, sc: usize, w: usize| -> bool {
+    let is_selected = |c: usize, sc: usize, w: usize| -> bool {
         let selection = match selection {
             Some(r) => r,
             None => return false,

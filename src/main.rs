@@ -109,7 +109,7 @@ fn append_log(message: &str) {
 }
 
 fn with_error_logging<T>(
-    mut app: &mut App,
+    app: &mut App,
     result: Result<T>,
     context: &str,
 ) -> Result<T> {

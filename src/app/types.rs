@@ -25,21 +25,21 @@ pub enum CommandPrompt {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Operator {
+pub(crate) enum Operator {
     Delete,
     Yank,
     Change,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum YankType {
+pub(crate) enum YankType {
     Char,
     Line,
     Block,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct OperatorPending {
+pub(crate) struct OperatorPending {
     pub(super) op: Operator,
     pub(super) start_row: usize,
     pub(super) start_col: usize,
@@ -120,7 +120,7 @@ pub enum VisualSelectionKind {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct EditorState {
+pub(crate) struct EditorState {
     pub(super) lines: Vec<String>,
     pub(super) cursor_row: usize,
     pub(super) cursor_col: usize,
@@ -153,7 +153,7 @@ pub(crate) struct BufferSlot {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct BlockInsert {
+pub(crate) struct BlockInsert {
     pub(super) start_row: usize,
     pub(super) end_row: usize,
     pub(super) col: usize,
@@ -161,26 +161,26 @@ pub(super) struct BlockInsert {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct LineUndo {
+pub(crate) struct LineUndo {
     pub(super) row: usize,
     pub(super) line: String,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct LastVisual {
+pub(crate) struct LastVisual {
     pub(super) mode: Mode,
     pub(super) start: (usize, usize),
     pub(super) end: (usize, usize),
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct FindPending {
+pub(crate) struct FindPending {
     pub(super) until: bool,
     pub(super) reverse: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct FindSpec {
+pub(crate) struct FindSpec {
     pub(super) ch: char,
     pub(super) until: bool,
     pub(super) reverse: bool,
@@ -211,12 +211,12 @@ pub(super) enum TextObjectTarget {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct TextObjectPending {
+pub(crate) struct TextObjectPending {
     pub(super) kind: TextObjectKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum CharClass {
+pub(crate) enum CharClass {
     Space,
     Word,
     Punct,
@@ -251,20 +251,6 @@ pub(super) fn char_to_byte_idx(s: &str, char_idx: usize) -> usize {
         .nth(char_idx)
         .map(|(i, _)| i)
         .unwrap_or_else(|| s.len())
-}
-
-pub(crate) fn byte_to_char_idx(s: &str, byte_idx: usize) -> usize {
-    if byte_idx == 0 {
-        return 0;
-    }
-    let mut count = 0usize;
-    for (i, _) in s.char_indices() {
-        if i >= byte_idx {
-            break;
-        }
-        count += 1;
-    }
-    count
 }
 
 pub fn line_screen_width(s: &str, tab_width: usize) -> usize {

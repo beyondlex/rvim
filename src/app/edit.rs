@@ -1,4 +1,3 @@
-use anyhow::Result;
 use std::collections::HashMap;
 
 use super::motion::char_count_in_range;
@@ -6,7 +5,7 @@ use crossterm::event::{KeyCode, KeyModifiers};
 
 use super::types::{
     char_class, char_to_byte_idx, char_to_screen_col, normalize_range, screen_col_to_char_idx,
-    CharClass, CommandPrompt, EditorState, LastVisual, LineUndo, Mode, Operator, OperatorPending,
+    CharClass, CommandPrompt, EditorState, LastVisual, LineUndo, Mode, Operator,
     RepeatKey, VisualSelection, VisualSelectionKind, YankType, char_display_width,
 };
 use super::App;
@@ -205,6 +204,7 @@ impl App {
         self.completion_anchor_col = None;
     }
 
+    #[allow(dead_code)]
     pub fn register_command_candidate(&mut self, name: impl Into<String>) {
         let name = name.into();
         if !self.command_candidates.iter().any(|c| c == &name) {
@@ -222,6 +222,7 @@ impl App {
         }
     }
 
+    #[allow(dead_code)]
     pub fn set_theme(&mut self, theme: super::theme::Theme) {
         self.theme = theme;
     }
@@ -238,6 +239,7 @@ impl App {
         }
     }
 
+    #[allow(dead_code)]
     pub fn theme_mut(&mut self) -> &mut super::theme::Theme {
         &mut self.theme
     }
@@ -1516,6 +1518,7 @@ impl App {
         self.dirty = true;
     }
 
+    #[allow(dead_code)]
     pub(super) fn delete_block_range(&mut self, start: (usize, usize), end: (usize, usize)) {
         self.touch_edit();
         let (start, end) = normalize_range(start, end);
@@ -1539,6 +1542,7 @@ impl App {
         }
     }
 
+    #[allow(dead_code)]
     pub(super) fn delete_range_no_undo(&mut self, start: (usize, usize), end: (usize, usize)) {
         self.touch_edit();
         let (start, end) = normalize_range(start, end);
@@ -1580,6 +1584,7 @@ impl App {
         self.cursor_col = start.1.min(len);
     }
 
+    #[allow(dead_code)]
     pub(super) fn delete_lines_no_undo(&mut self, start_row: usize, end_row: usize) {
         self.touch_edit();
         if self.lines.is_empty() {

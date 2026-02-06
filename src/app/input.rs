@@ -7,7 +7,7 @@ use super::types::{
     CommandPrompt, FindPending, FindSpec, Mode, Operator, OperatorPending, RepeatKey,
     TextObjectKind, TextObjectPending, TextObjectTarget, VisualSelectionKind,
 };
-use super::{App, VisualSelection};
+use super::App;
 
 pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
     let pre_tick = app.change_tick;
@@ -524,42 +524,6 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                     }
                 } else {
                     app.set_status("No previous find");
-                }
-            }
-            (KeyCode::Char('n'), KeyModifiers::NONE) => {
-                if let Some(spec) = app.last_search.clone() {
-                    let found = if spec.reverse {
-                        app.search_backward(&spec.pattern)
-                    } else {
-                        app.search_forward(&spec.pattern)
-                    };
-                    if !found {
-                        app.set_status(format!(
-                            "Pattern not found: {}{}",
-                            if spec.reverse { "?" } else { "/" },
-                            spec.pattern
-                        ));
-                    }
-                } else {
-                    app.set_status("No previous search");
-                }
-            }
-            (KeyCode::Char('N'), _) => {
-                if let Some(spec) = app.last_search.clone() {
-                    let found = if spec.reverse {
-                        app.search_forward(&spec.pattern)
-                    } else {
-                        app.search_backward(&spec.pattern)
-                    };
-                    if !found {
-                        app.set_status(format!(
-                            "Pattern not found: {}{}",
-                            if spec.reverse { "/" } else { "?" },
-                            spec.pattern
-                        ));
-                    }
-                } else {
-                    app.set_status("No previous search");
                 }
             }
             (KeyCode::Char(','), KeyModifiers::NONE) => {
@@ -1403,18 +1367,12 @@ fn complete_path_in_command(app: &mut App, reverse: bool) -> bool {
         unescape_path(raw_path)
     };
     let (expanded_path_part, _had_tilde) = expand_tilde(&unescaped);
-    let mut dir_part;
-    let mut base;
-    let mut dir_for_fs;
-
     let trimmed = expanded_path_part.trim_end_matches('/');
     let path_is_dir =
         !trimmed.is_empty() && fs::metadata(trimmed).map(|m| m.is_dir()).unwrap_or(false);
-    if path_is_dir {
+    let (dir_part, base, dir_for_fs) = if path_is_dir {
         let display_dir = format!("{}/", unescaped.trim_end_matches('/'));
-        dir_part = display_dir;
-        base = "";
-        dir_for_fs = trimmed.to_string();
+        (display_dir, "", trimmed.to_string())
     } else {
         let (dir_display, file_base) = match unescaped.rfind('/') {
             Some(idx) => (&unescaped[..=idx], &unescaped[idx + 1..]),
@@ -1424,16 +1382,15 @@ fn complete_path_in_command(app: &mut App, reverse: bool) -> bool {
             Some(idx) => (&expanded_path_part[..=idx], &expanded_path_part[idx + 1..]),
             None => ("", expanded_path_part.as_str()),
         };
-        dir_part = dir_display.to_string();
-        base = file_base;
-        dir_for_fs = if dir_fs.is_empty() {
+        let dir_for_fs = if dir_fs.is_empty() {
             ".".to_string()
         } else if dir_fs == "/" {
             "/".to_string()
         } else {
             dir_fs.trim_end_matches('/').to_string()
         };
-    }
+        (dir_display.to_string(), file_base, dir_for_fs)
+    };
 
     let mut matches: Vec<String> = Vec::new();
     if let Ok(entries) = fs::read_dir(&dir_for_fs) {

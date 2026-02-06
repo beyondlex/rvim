@@ -1,4 +1,5 @@
 mod app;
+mod logging;
 mod ui;
 
 use std::fs;
@@ -6,7 +7,6 @@ use std::io;
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
-use std::time::SystemTime;
 
 use anyhow::Result;
 use crossterm::event::{self, Event};
@@ -15,6 +15,7 @@ use crossterm::{execute, event::EnableBracketedPaste, event::DisableBracketedPas
 use ratatui::prelude::*;
 
 use crate::app::{handle_key, load_config, App, Mode};
+use crate::logging::timestamp_prefix;
 use crate::ui::apply_cursor_style;
 
 struct TerminalGuard;
@@ -89,8 +90,7 @@ fn install_panic_logger() {
         let _ = fs::create_dir_all(&path);
         path.push("rvim.log");
         if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
-            let ts = SystemTime::now();
-            let _ = writeln!(file, "[{:?}] panic: {}", ts, info);
+            let _ = writeln!(file, "{} panic: {}", timestamp_prefix(), info);
         }
     }));
 }
@@ -104,8 +104,7 @@ fn append_log(message: &str) {
     let _ = fs::create_dir_all(&path);
     path.push("rvim.log");
     if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
-        let ts = SystemTime::now();
-        let _ = writeln!(file, "[{:?}] error: {}", ts, message);
+        let _ = writeln!(file, "{} error: {}", timestamp_prefix(), message);
     }
 }
 

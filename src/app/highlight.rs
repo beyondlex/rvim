@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use tree_sitter::{Language, Parser, Query, QueryCursor, Tree, StreamingIterator};
 
+use crate::logging::timestamp_prefix;
 use super::App;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +45,9 @@ pub(crate) struct SyntaxState {
     parser: Parser,
     tree: Option<Tree>,
     query: Query,
+    inline_parser: Option<Parser>,
+    inline_query: Option<Query>,
+    inline_query_key: Option<String>,
     source: String,
     line_offsets: Vec<usize>,
     cache_tick: u64,
@@ -160,6 +164,7 @@ pub(crate) fn syntax_spans_for_state(
             }
         }
     }
+    add_markdown_inline_spans(state, lines, start_row, end_row, &mut out);
     for spans in out.values_mut() {
         spans.sort_by(|a, b| (a.start_col, a.end_col).cmp(&(b.start_col, b.end_col)));
         normalize_spans(spans);
@@ -179,6 +184,112 @@ pub(crate) fn syntax_spans_for_state(
         debug_log("syntax: no spans produced for viewport");
     }
     out
+}
+
+fn load_markdown_inline_query() -> Option<QuerySource> {
+    if let Some(q) = load_query_from_paths("markdown-inline") {
+        return Some(q);
+    }
+    Some(QuerySource {
+        text: tree_sitter_md::HIGHLIGHT_QUERY_INLINE.to_string(),
+        key: "builtin:markdown-inline".to_string(),
+    })
+}
+
+fn add_markdown_inline_spans(
+    state: &mut SyntaxState,
+    lines: &[String],
+    start_row: usize,
+    end_row: usize,
+    out: &mut HashMap<usize, Vec<SyntaxSpan>>,
+) {
+    let (Some(inline_parser), Some(inline_query)) =
+        (state.inline_parser.as_mut(), state.inline_query.as_ref())
+    else {
+        return;
+    };
+    let tree = match state.tree.as_ref() {
+        Some(tree) => tree,
+        None => return,
+    };
+    let root = tree.root_node();
+    let mut stack = vec![root];
+    while let Some(node) = stack.pop() {
+        if node.kind() == "inline" {
+            let inline_start = node.start_byte();
+            let inline_end = node.end_byte();
+            if inline_start >= inline_end {
+                continue;
+            }
+            let inline_start_row = node.start_position().row as usize;
+            let inline_end_row = node.end_position().row as usize;
+            if inline_end_row < start_row || inline_start_row >= end_row {
+                continue;
+            }
+            let Some(slice) = state.source.get(inline_start..inline_end) else {
+                continue;
+            };
+            let inline_tree = match inline_parser.parse(slice, None) {
+                Some(tree) => tree,
+                None => continue,
+            };
+            let mut cursor = QueryCursor::new();
+            let inline_root = inline_tree.root_node();
+            let mut captures = cursor.captures(inline_query, inline_root, slice.as_bytes());
+            loop {
+                captures.advance();
+                let Some((m, idx)) = captures.get() else {
+                    break;
+                };
+                let capture = &m.captures[*idx];
+                let name = inline_query.capture_names()[capture.index as usize];
+                let Some(kind) = capture_to_kind(name) else {
+                    continue;
+                };
+                let node = capture.node;
+                let start = inline_start + node.start_byte();
+                let end = inline_start + node.end_byte();
+                if start >= end {
+                    continue;
+                }
+                let start_row_cap = inline_start_row + node.start_position().row as usize;
+                let end_row_cap = inline_start_row + node.end_position().row as usize;
+                for row in start_row_cap..=end_row_cap {
+                    if row < start_row || row >= end_row {
+                        continue;
+                    }
+                    let line = match lines.get(row) {
+                        Some(line) => line,
+                        None => continue,
+                    };
+                    let line_start = state.line_offsets.get(row).copied().unwrap_or(0);
+                    let line_end = state
+                        .line_offsets
+                        .get(row + 1)
+                        .copied()
+                        .unwrap_or(state.source.len());
+                    let seg_start = if row == start_row_cap { start } else { line_start };
+                    let seg_end = if row == end_row_cap { end } else { line_end };
+                    if seg_end <= seg_start || seg_start < line_start || seg_end > line_end {
+                        continue;
+                    }
+                    if let Some((start_col, end_col)) =
+                        byte_range_to_col_range(line, line_start, seg_start, seg_end)
+                    {
+                        out.entry(row)
+                            .or_default()
+                            .push(SyntaxSpan { start_col, end_col, kind });
+                    }
+                }
+            }
+            continue;
+        }
+        for i in (0..node.child_count()).rev() {
+            if let Some(child) = node.child(i) {
+                stack.push(child);
+            }
+        }
+    }
 }
 
 pub fn total_spans(spans: &Option<HashMap<usize, Vec<SyntaxSpan>>>) -> usize {
@@ -218,12 +329,39 @@ impl SyntaxState {
         let query_key = query.key.clone();
         let query = Query::new(&spec.language, &query.text)
             .map_err(|err| anyhow::anyhow!("compile query: {}", err))?;
+        let (inline_parser, inline_query, inline_query_key) = if spec.name == "markdown" {
+            match load_markdown_inline_query() {
+                Some(inline) => {
+                    let mut parser = Parser::new();
+                    match parser.set_language(&tree_sitter_md::INLINE_LANGUAGE.into()) {
+                        Ok(_) => match Query::new(&tree_sitter_md::INLINE_LANGUAGE.into(), &inline.text)
+                        {
+                            Ok(query) => (Some(parser), Some(query), Some(inline.key)),
+                            Err(err) => {
+                                debug_log(&format!("syntax: markdown inline query failed: {}", err));
+                                (None, None, None)
+                            }
+                        },
+                        Err(err) => {
+                            debug_log(&format!("syntax: markdown inline language failed: {}", err));
+                            (None, None, None)
+                        }
+                    }
+                }
+                None => (None, None, None),
+            }
+        } else {
+            (None, None, None)
+        };
         Ok(Self {
             language_name: spec.name,
             query_key,
             parser,
             tree: None,
             query,
+            inline_parser,
+            inline_query,
+            inline_query_key,
             source: String::new(),
             line_offsets: Vec::new(),
             cache_tick: u64::MAX,
@@ -394,6 +532,7 @@ fn capture_to_kind(name: &str) -> Option<HighlightKind> {
     match base {
         "keyword" => Some(HighlightKind::Keyword),
         "string" => Some(HighlightKind::String),
+        "text" => Some(HighlightKind::String),
         "comment" => Some(HighlightKind::Comment),
         "function" => Some(HighlightKind::Function),
         "type" => Some(HighlightKind::Type),
@@ -518,7 +657,7 @@ fn debug_log(message: &str) {
     let _ = fs::create_dir_all(&path);
     path.push("rvim.log");
     if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
-        let _ = writeln!(file, "{}", message);
+        let _ = writeln!(file, "{} {}", timestamp_prefix(), message);
     }
 }
 

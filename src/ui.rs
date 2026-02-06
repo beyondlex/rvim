@@ -150,7 +150,7 @@ pub fn ui(f: &mut Frame<'_>, app: &mut App) {
     }
 
     if app.mode == Mode::Command {
-        let cursor_x = message_area.x + 1 + app.command_buffer.chars().count() as u16;
+        let cursor_x = message_area.x + 1 + app.command_cursor.min(app.command_buffer.chars().count()) as u16;
         let cursor_y = message_area.y;
         if cursor_x < message_area.right() && cursor_y < message_area.bottom() {
             f.set_cursor_position(Position::new(cursor_x, cursor_y));

@@ -4,8 +4,8 @@ use std::fs;
 
 use super::edit::selection_to_last_visual;
 use super::types::{
-    CommandPrompt, FindPending, FindSpec, Mode, Operator, OperatorPending, RepeatKey,
-    TextObjectKind, TextObjectPending, TextObjectTarget, VisualSelectionKind,
+    char_to_byte_idx, CommandPrompt, FindPending, FindSpec, Mode, Operator, OperatorPending,
+    RepeatKey, TextObjectKind, TextObjectPending, TextObjectTarget, VisualSelectionKind,
 };
 use super::App;
 
@@ -255,6 +255,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.mode = Mode::Command;
                 app.command_prompt = CommandPrompt::SearchForward;
                 app.command_buffer.clear();
+                app.command_cursor = 0;
                 app.search_history_index = None;
                 app.operator_pending = None;
             }
@@ -262,6 +263,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.mode = Mode::Command;
                 app.command_prompt = CommandPrompt::SearchBackward;
                 app.command_buffer.clear();
+                app.command_cursor = 0;
                 app.search_history_index = None;
                 app.operator_pending = None;
             }
@@ -269,6 +271,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                 app.mode = Mode::Command;
                 app.command_prompt = CommandPrompt::Command;
                 app.command_buffer.clear();
+                app.command_cursor = 0;
                 app.search_history_index = None;
                 app.operator_pending = None;
             }
@@ -635,6 +638,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
             (KeyCode::Esc, _) => {
                 app.mode = Mode::Normal;
                 app.command_buffer.clear();
+                app.command_cursor = 0;
                 app.command_prompt = CommandPrompt::Command;
                 app.search_history_index = None;
                 app.command_history_index = None;
@@ -647,6 +651,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                     app.execute_search()?
                 };
                 app.command_buffer.clear();
+                app.command_cursor = 0;
                 app.mode = Mode::Normal;
                 app.command_prompt = CommandPrompt::Command;
                 app.search_history_index = None;
@@ -656,8 +661,22 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                     return Ok(true);
                 }
             }
+            (KeyCode::Backspace, mods) if mods.contains(KeyModifiers::ALT) => {
+                command_delete_prev_word(app);
+                app.search_history_index = None;
+                app.command_history_index = None;
+                app.clear_completion();
+            }
+            (KeyCode::Backspace, mods)
+                if mods.contains(KeyModifiers::SUPER) || mods.contains(KeyModifiers::CONTROL) =>
+            {
+                command_delete_to_line_start(app);
+                app.search_history_index = None;
+                app.command_history_index = None;
+                app.clear_completion();
+            }
             (KeyCode::Backspace, _) => {
-                app.command_buffer.pop();
+                command_backspace(app);
                 app.search_history_index = None;
                 app.command_history_index = None;
                 app.clear_completion();
@@ -689,6 +708,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                         };
                         app.command_history_index = Some(next_idx);
                         app.command_buffer = app.command_history[next_idx].clone();
+                        command_cursor_to_end(app);
                         app.search_history_index = None;
                         app.clear_completion();
                     }
@@ -705,6 +725,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                         };
                         app.search_history_index = Some(next_idx);
                         app.command_buffer = app.search_history[next_idx].clone();
+                        command_cursor_to_end(app);
                         app.command_history_index = None;
                         app.clear_completion();
                     }
@@ -717,11 +738,13 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                             let next_idx = idx + 1;
                             app.command_history_index = Some(next_idx);
                             app.command_buffer = app.command_history[next_idx].clone();
+                            command_cursor_to_end(app);
                             app.search_history_index = None;
                             app.clear_completion();
                         } else {
                             app.command_history_index = None;
                             app.command_buffer.clear();
+                            app.command_cursor = 0;
                             app.clear_completion();
                         }
                     }
@@ -734,35 +757,59 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> Result<bool> {
                             let next_idx = idx + 1;
                             app.search_history_index = Some(next_idx);
                             app.command_buffer = app.search_history[next_idx].clone();
+                            command_cursor_to_end(app);
                             app.command_history_index = None;
                             app.clear_completion();
                         } else {
                             app.search_history_index = None;
                             app.command_buffer.clear();
+                            app.command_cursor = 0;
                             app.clear_completion();
                         }
                     }
                 }
+            }
+            (KeyCode::Left, mods) if mods.contains(KeyModifiers::ALT) => {
+                command_move_word_left(app);
+            }
+            (KeyCode::Right, mods) if mods.contains(KeyModifiers::ALT) => {
+                command_move_word_right(app);
+            }
+            (KeyCode::Left, mods)
+                if mods.contains(KeyModifiers::SUPER) || mods.contains(KeyModifiers::CONTROL) =>
+            {
+                command_move_line_start(app);
+            }
+            (KeyCode::Right, mods)
+                if mods.contains(KeyModifiers::SUPER) || mods.contains(KeyModifiers::CONTROL) =>
+            {
+                command_move_line_end(app);
+            }
+            (KeyCode::Left, _) => {
+                command_move_left(app);
+            }
+            (KeyCode::Right, _) => {
+                command_move_right(app);
             }
             (KeyCode::Char('/'), KeyModifiers::NONE) => {
                 if enter_completion_directory(app) {
                     app.search_history_index = None;
                     app.command_history_index = None;
                 } else {
-                    app.command_buffer.push('/');
+                    command_insert_char(app, '/');
                     app.search_history_index = None;
                     app.command_history_index = None;
                     app.clear_completion();
                 }
             }
             (KeyCode::Char(ch), KeyModifiers::NONE) => {
-                app.command_buffer.push(ch);
+                command_insert_char(app, ch);
                 app.search_history_index = None;
                 app.command_history_index = None;
                 app.clear_completion();
             }
             (KeyCode::Char(ch), KeyModifiers::SHIFT) => {
-                app.command_buffer.push(ch);
+                command_insert_char(app, ch);
                 app.search_history_index = None;
                 app.command_history_index = None;
                 app.clear_completion();
@@ -1306,6 +1353,7 @@ fn complete_set_in_command(app: &mut App, reverse: bool) -> bool {
         app.completion_index = Some(next_idx);
         let next = app.completion_candidates[next_idx].clone();
         app.command_buffer = next;
+        command_cursor_to_end(app);
         return true;
     }
 
@@ -1316,7 +1364,112 @@ fn complete_set_in_command(app: &mut App, reverse: bool) -> bool {
     app.completion_anchor_col = Some(prefix.chars().count() as u16);
     let first = app.completion_candidates[0].clone();
     app.command_buffer = first;
+    command_cursor_to_end(app);
     true
+}
+
+fn command_buffer_len(app: &App) -> usize {
+    app.command_buffer.chars().count()
+}
+
+fn command_cursor_to_end(app: &mut App) {
+    app.command_cursor = command_buffer_len(app);
+}
+
+fn command_insert_char(app: &mut App, ch: char) {
+    let idx = app.command_cursor.min(command_buffer_len(app));
+    let byte_idx = char_to_byte_idx(&app.command_buffer, idx);
+    app.command_buffer.insert(byte_idx, ch);
+    app.command_cursor = idx + 1;
+}
+
+fn command_backspace(app: &mut App) {
+    if app.command_cursor == 0 {
+        return;
+    }
+    let start = app.command_cursor - 1;
+    let start_byte = char_to_byte_idx(&app.command_buffer, start);
+    let end_byte = char_to_byte_idx(&app.command_buffer, app.command_cursor);
+    app.command_buffer.replace_range(start_byte..end_byte, "");
+    app.command_cursor = start;
+}
+
+fn command_delete_prev_word(app: &mut App) {
+    let len = command_buffer_len(app);
+    let mut idx = app.command_cursor.min(len);
+    if idx == 0 {
+        return;
+    }
+    let chars: Vec<char> = app.command_buffer.chars().collect();
+    while idx > 0 && chars[idx - 1].is_whitespace() {
+        idx -= 1;
+    }
+    while idx > 0 && !chars[idx - 1].is_whitespace() {
+        idx -= 1;
+    }
+    let start_byte = char_to_byte_idx(&app.command_buffer, idx);
+    let end_byte = char_to_byte_idx(&app.command_buffer, app.command_cursor);
+    app.command_buffer.replace_range(start_byte..end_byte, "");
+    app.command_cursor = idx;
+}
+
+fn command_delete_to_line_start(app: &mut App) {
+    if app.command_cursor == 0 {
+        return;
+    }
+    let end_byte = char_to_byte_idx(&app.command_buffer, app.command_cursor);
+    app.command_buffer.replace_range(0..end_byte, "");
+    app.command_cursor = 0;
+}
+
+fn command_move_left(app: &mut App) {
+    if app.command_cursor > 0 {
+        app.command_cursor -= 1;
+    }
+}
+
+fn command_move_right(app: &mut App) {
+    let len = command_buffer_len(app);
+    if app.command_cursor < len {
+        app.command_cursor += 1;
+    }
+}
+
+fn command_move_word_left(app: &mut App) {
+    let len = command_buffer_len(app);
+    let mut idx = app.command_cursor.min(len);
+    if idx == 0 {
+        return;
+    }
+    let chars: Vec<char> = app.command_buffer.chars().collect();
+    while idx > 0 && chars[idx - 1].is_whitespace() {
+        idx -= 1;
+    }
+    while idx > 0 && !chars[idx - 1].is_whitespace() {
+        idx -= 1;
+    }
+    app.command_cursor = idx;
+}
+
+fn command_move_word_right(app: &mut App) {
+    let len = command_buffer_len(app);
+    let mut idx = app.command_cursor.min(len);
+    let chars: Vec<char> = app.command_buffer.chars().collect();
+    while idx < len && chars[idx].is_whitespace() {
+        idx += 1;
+    }
+    while idx < len && !chars[idx].is_whitespace() {
+        idx += 1;
+    }
+    app.command_cursor = idx;
+}
+
+fn command_move_line_start(app: &mut App) {
+    app.command_cursor = 0;
+}
+
+fn command_move_line_end(app: &mut App) {
+    app.command_cursor = command_buffer_len(app);
 }
 
 fn complete_path_in_command(app: &mut App, reverse: bool) -> bool {
@@ -1368,6 +1521,7 @@ fn complete_path_in_command(app: &mut App, reverse: bool) -> bool {
         app.completion_index = Some(next_idx);
         let next = app.completion_candidates[next_idx].clone();
         app.command_buffer = format!("{}{}", cmd_prefix, next);
+        command_cursor_to_end(app);
         return true;
     }
 
@@ -1446,6 +1600,7 @@ fn complete_path_in_command(app: &mut App, reverse: bool) -> bool {
     if !reverse && matches.len() == 1 {
         let only = matches[0].clone();
         app.command_buffer = format!("{}{}", cmd_prefix, only);
+        command_cursor_to_end(app);
         app.clear_completion();
         return true;
     }
@@ -1457,6 +1612,7 @@ fn complete_path_in_command(app: &mut App, reverse: bool) -> bool {
     app.completion_anchor_col = Some(cmd_prefix.chars().count() as u16);
     let first = app.completion_candidates[0].clone();
     app.command_buffer = format!("{}{}", cmd_prefix, first);
+    command_cursor_to_end(app);
     true
 }
 
@@ -1528,6 +1684,7 @@ fn complete_command_in_command(app: &mut App, reverse: bool) -> bool {
         app.completion_index = Some(next_idx);
         let next = app.completion_candidates[next_idx].clone();
         app.command_buffer = next;
+        command_cursor_to_end(app);
         return true;
     }
 
@@ -1538,6 +1695,7 @@ fn complete_command_in_command(app: &mut App, reverse: bool) -> bool {
     app.completion_anchor_col = Some(current.chars().count() as u16);
     let first = app.completion_candidates[0].clone();
     app.command_buffer = first;
+    command_cursor_to_end(app);
     true
 }
 

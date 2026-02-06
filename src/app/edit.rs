@@ -57,6 +57,7 @@ impl App {
             command_history: Vec::new(),
             command_history_index: None,
             command_candidates: default_command_candidates(),
+            command_cursor: 0,
             last_search: None,
             search_history: Vec::new(),
             search_history_index: None,
@@ -174,6 +175,7 @@ impl App {
         self.mode = Mode::Normal;
         self.command_prompt = CommandPrompt::Command;
         self.command_buffer.clear();
+        self.command_cursor = 0;
         self.search_history_index = None;
         self.pending_count = None;
         self.visual_start = None;
